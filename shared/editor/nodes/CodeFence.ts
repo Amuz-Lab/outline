@@ -1,3 +1,4 @@
+import { HtmlPreview } from "../extensions/HtmlPreview";
 import copy from "copy-to-clipboard";
 import { t } from "i18next";
 import type Token from "markdown-it/lib/token.mjs";
@@ -706,6 +707,7 @@ export default class CodeFence extends Node<CodeFenceOptions> {
     };
 
     return [
+      this.name === "code_fence" ? HtmlPreview(this.editor) : undefined,
       CodeHighlighting({
         name: this.name,
         lineNumbers: this.showLineNumbers,

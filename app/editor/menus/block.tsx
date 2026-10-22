@@ -273,6 +273,13 @@ export default function blockMenuItems(
     },
     {
       name: "code_block",
+      title: "HTML Preview",
+      icon: <CodeIcon />,
+      keywords: "html webpage preview interactive",
+      attrs: { language: "html-preview" },
+    },
+    {
+      name: "code_block",
       title: "Mermaid Diagram",
       icon: <Img src="/images/mermaidjs.png" alt="Mermaid Diagram" />,
       keywords: "flowchart graph sequence gantt",

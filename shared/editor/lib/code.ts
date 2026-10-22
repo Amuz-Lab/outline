@@ -28,6 +28,7 @@ type CodeLanguage = {
  */
 export const codeLanguages: Record<string, CodeLanguage> = {
   none: { lang: "", label: "Plain text" },
+  "html-preview": { lang: "markup", label: "HTML Preview" },
   abap: {
     lang: "abap",
     label: "ABAP",
