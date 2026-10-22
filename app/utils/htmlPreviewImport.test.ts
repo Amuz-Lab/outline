@@ -16,8 +16,7 @@ describe("collection HTML preview import", () => {
       '<html><script>const x = "```";</script><svg></svg>한글</html>\n';
     const result = await readHtmlPreviewFile(htmlFile(source));
     expect(result?.title).toBe("Decision model");
-    expect(result?.data.content?.[0].attrs?.language).toBe("html-preview");
-    expect(result?.data.content?.[0].content?.[0].text).toBe(source);
+    expect(result?.text).toBe(`\`\`\`\`html-preview\n${source}\`\`\`\``);
   });
   it("supports uppercase HTM with an empty MIME type", async () => {
     const file = htmlFile("<p>ok</p>", "Page.HTM", "");

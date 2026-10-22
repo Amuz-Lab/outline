@@ -52,14 +52,7 @@ it("creates and opens a preview document for collection HTML drops", async () =>
     expect.objectContaining({
       title: "Decision model",
       collectionId: "collection",
-      data: expect.objectContaining({
-        content: [
-          expect.objectContaining({
-            attrs: { language: "html-preview", wrap: false },
-            content: [{ type: "text", text: source }],
-          }),
-        ],
-      }),
+      text: `\`\`\`html-preview\n${source}\n\`\`\``,
     }),
     { publish: true }
   );
