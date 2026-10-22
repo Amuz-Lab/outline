@@ -45,7 +45,7 @@ describe("HTML preview source", () => {
   it("enforces a UTF-8 byte limit", () => {
     expect(() =>
       createHtmlPreviewSource("가".repeat(MAX_HTML_PREVIEW_BYTES / 3 + 1), "n")
-    ).toThrow("512 KiB");
+    ).toThrow("1 MiB");
   });
   it("round trips HTML source through Markdown with embedded backticks", () => {
     const source = "<html>\n<body><pre>``` example</pre></body>\n</html>\n";

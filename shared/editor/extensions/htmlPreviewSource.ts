@@ -1,5 +1,5 @@
 /** Maximum source size accepted by the preview renderer. */
-export const MAX_HTML_PREVIEW_BYTES = 512 * 1024;
+export const MAX_HTML_PREVIEW_BYTES = 1024 * 1024;
 
 /** Prepare a parsed HTML page for a sandboxed srcdoc without weakening parent CSP. */
 export function createHtmlPreviewSource(
@@ -9,7 +9,7 @@ export function createHtmlPreviewSource(
 ): string {
   if (new TextEncoder().encode(source).byteLength > MAX_HTML_PREVIEW_BYTES) {
     throw new Error(
-      "HTML must be at most 512 KiB. Source is still available for editing."
+      "HTML must be at most 1 MiB. Source is still available for editing."
     );
   }
   const doc = new DOMParser().parseFromString(source, "text/html");

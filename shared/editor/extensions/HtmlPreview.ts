@@ -92,7 +92,7 @@ export function HtmlPreview(editor: Editor) {
                 }
                 try {
                   if (file.size > MAX_HTML_PREVIEW_BYTES) {
-                    throw new Error("HTML must be at most 512 KiB.");
+                    throw new Error("HTML must be at most 1 MiB.");
                   }
                   const text = await file.text();
                   if (view.state.doc.nodeAt(block.pos) !== block.node) {

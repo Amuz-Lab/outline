@@ -17,11 +17,11 @@ export async function readHtmlPreviewFile(
     return undefined;
   }
   if (file.size > MAX_HTML_PREVIEW_BYTES) {
-    throw new Error("HTML must be at most 512 KiB.");
+    throw new Error("HTML must be at most 1 MiB.");
   }
   const source = await file.text();
   if (new TextEncoder().encode(source).byteLength > MAX_HTML_PREVIEW_BYTES) {
-    throw new Error("HTML must be at most 512 KiB.");
+    throw new Error("HTML must be at most 1 MiB.");
   }
   // documents.create accepts Markdown text, not editor JSON.
   let fenceLength = 3;

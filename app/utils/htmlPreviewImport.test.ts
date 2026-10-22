@@ -32,7 +32,7 @@ describe("collection HTML preview import", () => {
   });
   it("rejects oversized HTML before document creation", async () => {
     await expect(
-      readHtmlPreviewFile(htmlFile("x".repeat(512 * 1024 + 1)))
-    ).rejects.toThrow("512 KiB");
+      readHtmlPreviewFile(htmlFile("x".repeat(1024 * 1024 + 1)))
+    ).rejects.toThrow("1 MiB");
   });
 });

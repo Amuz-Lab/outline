@@ -80,9 +80,9 @@ it("keeps dialog imports and non-HTML drops on the original import path", async 
 
 it("does not create a document when HTML exceeds the preview limit", async () => {
   await useImportDocument("collection", undefined, true).handleFiles([
-    file("x".repeat(512 * 1024 + 1)),
+    file("x".repeat(1024 * 1024 + 1)),
   ]);
   expect(mocks.create).not.toHaveBeenCalled();
   expect(mocks.importFile).not.toHaveBeenCalled();
-  expect(mocks.error).toHaveBeenCalledWith("HTML must be at most 512 KiB.");
+  expect(mocks.error).toHaveBeenCalledWith("HTML must be at most 1 MiB.");
 });
