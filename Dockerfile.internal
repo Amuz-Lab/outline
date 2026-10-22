@@ -1,0 +1,15 @@
+# Frontend-only extension; keep the official backend and source release aligned.
+FROM docker.getoutline.com/outlinewiki/outline:1.11.0 AS frontend
+USER root
+WORKDIR /src
+COPY . .
+ENV NODE_ENV=production CI=1 URL=https://outline.example.invalid
+RUN node -e "if (require('./package.json').version !== '1.11.0') throw new Error('Backend image must match source release')" \
+    && npm exec --yes --package=@yarnpkg/cli-dist@4.18.0 -- yarn install --immutable \
+    && npm exec --yes --package=@yarnpkg/cli-dist@4.18.0 -- yarn vite:build
+
+FROM docker.getoutline.com/outlinewiki/outline:1.11.0
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.source="https://github.com/Amuz-Lab/outline" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}"
+COPY --from=frontend --chown=nodejs:nodejs /src/build/app/ /opt/outline/build/app/

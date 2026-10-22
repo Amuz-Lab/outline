@@ -49,7 +49,8 @@ const ImportDropzone = observer(function ImportDropzone({
   const { documents } = useStores();
   const { handleFiles, isImporting } = useImportDocument(
     collectionId,
-    documentId
+    documentId,
+    !!collectionId && !documentId
   );
 
   const canCollection = usePolicy(collectionId);

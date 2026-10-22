@@ -7,17 +7,19 @@ import { errToString } from "@shared/utils/error";
 import { useSidebarContext } from "~/components/Sidebar/components/SidebarContext";
 import useStores from "~/hooks/useStores";
 import { documentPath } from "~/utils/routeHelpers";
+import { readHtmlPreviewFile } from "~/utils/htmlPreviewImport";
 
 let importingLock = false;
 
 export default function useImportDocument(
   collectionId?: string | null,
-  documentId?: string
+  documentId?: string,
+  htmlPreview = false
 ): {
   handleFiles: (files: File[]) => Promise<void>;
   isImporting: boolean;
 } {
-  const { documents } = useStores();
+  const { documents, collections } = useStores();
   const sidebarContext = useSidebarContext();
   const [isImporting, setImporting] = useState(false);
   const { t } = useTranslation();
@@ -51,9 +53,25 @@ export default function useImportDocument(
           const toastId = toast.loading(`${t("Uploading")}…`);
 
           try {
-            const doc = await documents.import(file, documentId, cId, {
-              publish: true,
-            });
+            const preview = htmlPreview
+              ? await readHtmlPreviewFile(file)
+              : undefined;
+            const doc = preview
+              ? await documents.create(
+                  {
+                    ...preview,
+                    collectionId: cId,
+                    parentDocumentId: documentId,
+                  },
+                  { publish: true }
+                )
+              : await documents.import(file, documentId, cId, {
+                  publish: true,
+                });
+
+            if (preview && cId) {
+              collections.get(cId)?.addDocument(doc, documentId);
+            }
 
             if (redirect) {
               history.push({
@@ -74,7 +92,16 @@ export default function useImportDocument(
         importingLock = false;
       }
     },
-    [t, documents, history, collectionId, sidebarContext, documentId]
+    [
+      t,
+      documents,
+      collections,
+      history,
+      collectionId,
+      sidebarContext,
+      documentId,
+      htmlPreview,
+    ]
   );
 
   return {
