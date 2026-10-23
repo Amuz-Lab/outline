@@ -302,7 +302,7 @@ export function HtmlPreview(editor: Editor) {
           },
           {
             side: -1,
-            key: `html-preview-${block.pos}-${hashString(source)}-${editing}`,
+            key: `html-preview-${block.pos}-${hashString(source)}-${block.node.attrs.previewWidth}-${block.node.attrs.previewHeight}-${editing}`,
             stopEvent: () => true,
             ignoreSelection: true,
             destroy: (dom: Node) => {

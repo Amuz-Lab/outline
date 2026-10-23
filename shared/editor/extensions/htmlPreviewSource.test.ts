@@ -2,6 +2,9 @@ import {
   createHtmlPreviewSource,
   MAX_HTML_PREVIEW_BYTES,
 } from "./htmlPreviewSource";
+import { HtmlPreview } from "./HtmlPreview";
+import { EditorState, TextSelection } from "prosemirror-state";
+import type { Editor } from "../../../app/editor";
 import { schema, parser, serializer } from "../../test/editor";
 
 describe("HTML preview source", () => {
@@ -97,5 +100,37 @@ describe("HTML preview source", () => {
     expect(markdown).toContain("html-preview width=75 height=650");
     expect(restored?.attrs.previewWidth).toBe(75);
     expect(restored?.attrs.previewHeight).toBe(650);
+  });
+  it("recreates preview controls when saved dimensions change", () => {
+    const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "code_fence",
+        { language: "html-preview" },
+        schema.text("<p>Preview</p>")
+      ),
+      schema.node("paragraph"),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, doc.firstChild!.nodeSize + 1),
+      plugins: [plugin],
+    });
+    const widgetKey = (current: EditorState) =>
+      plugin
+        .getState(current)
+        ?.decorations.find()
+        .find((decoration) => decoration.spec.key?.startsWith("html-preview"))
+        ?.spec.key;
+
+    const resized = state.apply(
+      state.tr.setNodeMarkup(0, undefined, {
+        ...doc.firstChild?.attrs,
+        previewWidth: 90,
+      })
+    );
+
+    expect(widgetKey(resized)).not.toBe(widgetKey(state));
   });
 });
