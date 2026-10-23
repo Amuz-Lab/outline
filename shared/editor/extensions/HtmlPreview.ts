@@ -42,7 +42,7 @@ export function HtmlPreview(editor: Editor) {
       }
       decorations.push(
         Decoration.widget(
-          block.pos + block.node.nodeSize,
+          block.pos,
           (view) => {
             const wrapper = document.createElement("section");
             wrapper.contentEditable = "false";
@@ -176,7 +176,7 @@ export function HtmlPreview(editor: Editor) {
             return wrapper;
           },
           {
-            side: 1,
+            side: -1,
             key: `html-preview-${block.pos}-${hashString(source)}-${editing}`,
             stopEvent: () => true,
             ignoreSelection: true,
