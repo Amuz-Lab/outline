@@ -87,6 +87,20 @@ function sanitizeLanguage(language: string | null | undefined): string {
     .split(/\s/)[0];
 }
 
+function parsePreviewDimensions(info: string) {
+  const width = Number(info.match(/\bwidth=(\d+)\b/)?.[1]);
+  const height = Number(info.match(/\bheight=(\d+)\b/)?.[1]);
+  return {
+    previewWidth:
+      Number.isInteger(width) && width >= 25 && width <= 100 ? width : 100,
+    previewHeight:
+      height === 0 ||
+      (Number.isInteger(height) && height >= 200 && height <= 2000)
+        ? height
+        : 0,
+  };
+}
+
 interface CollapseState {
   /** Positions of code blocks taller than COLLAPSE_HEIGHT_RATIO of the viewport. */
   tallBlocks: Set<number>;
@@ -265,6 +279,8 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           default: false,
           validate: "boolean",
         },
+        previewWidth: { default: 100, validate: "number" },
+        previewHeight: { default: 0, validate: "number" },
       },
       content: "text*",
       marks: "comment",
@@ -281,6 +297,9 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           getAttrs: (dom: HTMLDivElement) => ({
             language: dom.dataset.language,
             wrap: dom.classList.contains("with-line-wrap"),
+            ...parsePreviewDimensions(
+              `width=${dom.dataset.previewWidth ?? "100"} height=${dom.dataset.previewHeight ?? "0"}`
+            ),
           }),
         },
         {
@@ -292,7 +311,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
             if (!dom.textContent?.includes("\n")) {
               return false;
             }
-            return { language: dom.dataset.language };
+            return {
+              language: dom.dataset.language,
+              ...parsePreviewDimensions(
+                `width=${dom.dataset.previewWidth ?? "100"} height=${dom.dataset.previewHeight ?? "0"}`
+              ),
+            };
           },
         },
       ],
@@ -313,6 +337,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
           {
             class: classes,
             "data-language": node.attrs.language,
+            ...(node.attrs.language === "html-preview"
+              ? {
+                  "data-preview-width": node.attrs.previewWidth,
+                  "data-preview-height": node.attrs.previewHeight,
+                }
+              : {}),
           },
           ["pre", ["code", { spellCheck: "false" }, 0]],
         ];
@@ -823,7 +853,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
       backticks ? Math.max(...backticks.map((run) => run.length)) + 1 : 3
     );
 
-    state.write(fence + sanitizeLanguage(node.attrs.language) + "\n");
+    const language = sanitizeLanguage(node.attrs.language);
+    const previewOptions =
+      language === "html-preview"
+        ? `${node.attrs.previewWidth === 100 ? "" : ` width=${node.attrs.previewWidth}`}${node.attrs.previewHeight ? ` height=${node.attrs.previewHeight}` : ""}`
+        : "";
+    state.write(fence + language + previewOptions + "\n");
     state.text(content, false);
     state.ensureNewLine();
     state.write(fence);
@@ -837,7 +872,12 @@ export default class CodeFence extends Node<CodeFenceOptions> {
   parseMarkdown() {
     return {
       block: "code_block",
-      getAttrs: (tok: Token) => ({ language: sanitizeLanguage(tok.info) }),
+      getAttrs: (tok: Token) => ({
+        language: sanitizeLanguage(tok.info),
+        ...(sanitizeLanguage(tok.info) === "html-preview"
+          ? parsePreviewDimensions(tok.info)
+          : {}),
+      }),
       noCloseToken: true,
     };
   }

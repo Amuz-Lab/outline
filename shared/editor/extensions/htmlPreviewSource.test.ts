@@ -83,4 +83,19 @@ describe("HTML preview source", () => {
     expect(restored?.attrs.language).toBe("html-preview");
     expect(restored?.textContent).toBe(source.replace(/\n$/, ""));
   });
+  it("persists customized preview width and height in the fence", () => {
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "code_fence",
+        { language: "html-preview", previewWidth: 75, previewHeight: 650 },
+        schema.text("<p>Preview</p>")
+      ),
+    ]);
+    const markdown = serializer.serialize(doc);
+    const restored = parser.parse(markdown)?.firstChild;
+
+    expect(markdown).toContain("html-preview width=75 height=650");
+    expect(restored?.attrs.previewWidth).toBe(75);
+    expect(restored?.attrs.previewHeight).toBe(650);
+  });
 });

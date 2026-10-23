@@ -43,24 +43,18 @@ export function HtmlPreview(editor: Editor) {
           block.pos,
           (view) => {
             const wrapper = document.createElement("section");
+            wrapper.className = "outline-html-preview";
             wrapper.contentEditable = "false";
             wrapper.setAttribute("aria-label", "HTML preview");
-            wrapper.style.boxSizing = "border-box";
-            wrapper.style.maxWidth = "100%";
-            wrapper.style.minWidth = "0";
-            wrapper.style.border = "1px solid #90909066";
-            wrapper.style.borderRadius = "8px";
-            wrapper.style.margin = "12px 0";
-            wrapper.style.padding = "10px";
             const toolbar = document.createElement("div");
-            toolbar.style.cssText =
-              "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;";
+            toolbar.className = "outline-html-preview-toolbar";
             const notice = document.createElement("p");
             notice.setAttribute("role", "status");
-            notice.style.cssText = "font-size:13px;margin:4px 0;";
+            notice.className = "outline-html-preview-notice";
             const addButton = (label: string, handleClick: () => void) => {
               const button = document.createElement("button");
               button.type = "button";
+              button.className = "outline-html-preview-button";
               button.textContent = label;
               button.addEventListener("mousedown", (event) =>
                 event.preventDefault()
@@ -68,6 +62,93 @@ export function HtmlPreview(editor: Editor) {
               button.addEventListener("click", handleClick);
               toolbar.append(button);
             };
+            const setDimensions = (width: number, height: number) => {
+              view.dispatch(
+                view.state.tr
+                  .setNodeMarkup(block.pos, undefined, {
+                    ...block.node.attrs,
+                    previewWidth: Math.max(25, Math.min(100, width)),
+                    previewHeight:
+                      height === 0 ? 0 : Math.max(200, Math.min(2000, height)),
+                  })
+                  .setMeta(previewKey, block.pos)
+              );
+            };
+            if (editing && !editor.props.readOnly) {
+              const width = Math.max(
+                25,
+                Math.min(100, Number(block.node.attrs.previewWidth) || 100)
+              );
+              const height = Number(block.node.attrs.previewHeight) || 0;
+              const rangeControl = (
+                name: string,
+                min: number,
+                max: number,
+                step: number,
+                value: number,
+                onChange: (value: number) => void
+              ) => {
+                const label = document.createElement("label");
+                label.className = "outline-html-preview-control";
+                const title = document.createElement("span");
+                title.textContent = name;
+                const output = document.createElement("output");
+                output.textContent = `${value}${name === "Width" ? "%" : " px"}`;
+                const input = document.createElement("input");
+                input.type = "range";
+                input.min = String(min);
+                input.max = String(max);
+                input.step = String(step);
+                input.value = String(value);
+                input.setAttribute("aria-label", name);
+                input.addEventListener("input", () => {
+                  output.textContent = `${input.value}${name === "Width" ? "%" : " px"}`;
+                });
+                input.addEventListener("change", () =>
+                  onChange(Number(input.value))
+                );
+                label.append(title, input, output);
+                return { label, input };
+              };
+              const widthControl = rangeControl(
+                "Width",
+                25,
+                100,
+                5,
+                width,
+                (value) => setDimensions(value, height)
+              );
+              const heightControl = rangeControl(
+                "Height",
+                200,
+                2000,
+                50,
+                height || 600,
+                (value) => setDimensions(width, value)
+              );
+              const autoHeight = document.createElement("label");
+              autoHeight.className = "outline-html-preview-auto-height";
+              const checkbox = document.createElement("input");
+              checkbox.type = "checkbox";
+              checkbox.checked = height === 0;
+              checkbox.addEventListener("change", () => {
+                heightControl.input.disabled = checkbox.checked;
+                setDimensions(
+                  width,
+                  checkbox.checked ? 0 : Number(heightControl.input.value)
+                );
+              });
+              autoHeight.append(
+                checkbox,
+                document.createTextNode("Auto height")
+              );
+              heightControl.input.disabled = height === 0;
+              toolbar.append(
+                widthControl.label,
+                heightControl.label,
+                autoHeight
+              );
+            }
             addButton(editing ? "Preview" : "Source", () => {
               const tr = view.state.tr.setMeta(
                 previewKey,
@@ -150,8 +231,13 @@ export function HtmlPreview(editor: Editor) {
                 iframe.setAttribute("sandbox", "allow-scripts");
                 iframe.allowFullscreen = true;
                 iframe.referrerPolicy = "no-referrer";
-                iframe.style.cssText =
-                  "display:block;width:100%;max-width:100%;height:200px;border:0;";
+                const previewWidth = Math.max(
+                  25,
+                  Math.min(100, Number(block.node.attrs.previewWidth) || 100)
+                );
+                const previewHeight =
+                  Number(block.node.attrs.previewHeight) || 0;
+                iframe.style.cssText = `display:block;width:${previewWidth}%;max-width:100%;height:${previewHeight || 200}px;border:0;margin:0 auto;`;
                 const diagnostics = new Set<string>();
                 addButton("Full screen", () => {
                   void iframe.requestFullscreen().catch(() => {
@@ -188,6 +274,7 @@ export function HtmlPreview(editor: Editor) {
                   }
                   if (
                     event.data.type !== "outline-html-height" ||
+                    previewHeight !== 0 ||
                     typeof event.data.height !== "number" ||
                     !Number.isFinite(event.data.height)
                   ) {
