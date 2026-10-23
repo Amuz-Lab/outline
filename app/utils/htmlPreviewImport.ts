@@ -91,6 +91,56 @@ function rewriteCss(
   );
 }
 
+function rewriteSrcset(
+  srcset: string,
+  basePath: string,
+  files: Record<string, Uint8Array>
+): string {
+  const candidates: string[] = [];
+  let position = 0;
+  while (position < srcset.length) {
+    while (position < srcset.length && /[\s,]/.test(srcset[position])) {
+      position++;
+    }
+    if (position === srcset.length) {
+      break;
+    }
+    const start = position;
+    while (position < srcset.length && !/\s/.test(srcset[position])) {
+      position++;
+    }
+    const token = srcset.slice(start, position);
+    const url = token.replace(/,+$/, "");
+    const endedWithComma = token.length !== url.length;
+    const descriptorStart = position;
+    let parentheses = 0;
+    if (!endedWithComma) {
+      while (position < srcset.length) {
+        const character = srcset[position];
+        if (character === "(") {
+          parentheses++;
+        }
+        if (character === ")") {
+          parentheses = Math.max(0, parentheses - 1);
+        }
+        if (character === "," && parentheses === 0) {
+          break;
+        }
+        position++;
+      }
+    }
+    const descriptor = endedWithComma
+      ? ""
+      : srcset.slice(descriptorStart, position).trim();
+    const rewritten = resourceUrl(url, basePath, files) ?? url;
+    candidates.push(`${rewritten}${descriptor ? ` ${descriptor}` : ""}`);
+    if (position < srcset.length && srcset[position] === ",") {
+      position++;
+    }
+  }
+  return candidates.join(", ");
+}
+
 function inlineArchiveResources(
   source: string,
   htmlPath: string,
@@ -117,6 +167,17 @@ function inlineArchiveResources(
         cssPath.slice(0, cssPath.lastIndexOf("/") + 1),
         files
       );
+      for (const attribute of ["media", "title"]) {
+        if (link.hasAttribute(attribute)) {
+          stylesheet.setAttribute(
+            attribute,
+            link.getAttribute(attribute) ?? ""
+          );
+        }
+      }
+      if (link.hasAttribute("disabled")) {
+        stylesheet.setAttribute("disabled", "");
+      }
       link.replaceWith(stylesheet);
     }
   });
@@ -148,6 +209,13 @@ function inlineArchiveResources(
         }
       }
     });
+
+  doc.querySelectorAll("img[srcset], source[srcset]").forEach((element) => {
+    const srcset = element.getAttribute("srcset");
+    if (srcset) {
+      element.setAttribute("srcset", rewriteSrcset(srcset, basePath, files));
+    }
+  });
 
   return "<!doctype html>" + doc.documentElement.outerHTML;
 }

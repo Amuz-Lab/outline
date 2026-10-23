@@ -63,6 +63,9 @@ export function HtmlPreview(editor: Editor) {
               toolbar.append(button);
             };
             const setDimensions = (width: number, height: number) => {
+              if (editor.props.readOnly) {
+                return;
+              }
               const editingPos =
                 previewKey.getState(view.state)?.editingPos ?? null;
               view.dispatch(
@@ -173,12 +176,12 @@ export function HtmlPreview(editor: Editor) {
               input.hidden = true;
               input.addEventListener("change", async () => {
                 const file = input.files?.[0];
-                if (!file) {
+                if (!file || editor.props.readOnly) {
                   return;
                 }
                 try {
                   const preview = await readHtmlPreviewSource(file);
-                  if (!preview) {
+                  if (!preview || editor.props.readOnly) {
                     return;
                   }
                   const { source: text } = preview;
@@ -243,7 +246,8 @@ export function HtmlPreview(editor: Editor) {
                 frame.className = "outline-html-preview-frame";
                 frame.style.width = `${previewWidth}%`;
                 frame.style.height = `${previewHeight || 200}px`;
-                iframe.style.cssText = "display:block;width:100%;height:100%;border:0;";
+                iframe.style.cssText =
+                  "display:block;width:100%;height:100%;border:0;";
                 const diagnostics = new Set<string>();
                 addButton("Full screen", () => {
                   void iframe.requestFullscreen().catch(() => {
@@ -311,7 +315,10 @@ export function HtmlPreview(editor: Editor) {
                   const handle = document.createElement("button");
                   handle.type = "button";
                   handle.className = `outline-html-preview-resize outline-html-preview-resize-${axis}`;
-                  handle.setAttribute("aria-label", `Resize HTML preview ${axis}`);
+                  handle.setAttribute(
+                    "aria-label",
+                    `Resize HTML preview ${axis}`
+                  );
                   handle.title = "Drag to resize preview";
                   handle.addEventListener("keydown", (event) => {
                     const widthDelta =
@@ -336,7 +343,8 @@ export function HtmlPreview(editor: Editor) {
                     event.preventDefault();
                     const containerWidth = availableWidth();
                     const currentWidth = Math.round(
-                      (frame.getBoundingClientRect().width / containerWidth) * 100
+                      (frame.getBoundingClientRect().width / containerWidth) *
+                        100
                     );
                     const currentHeight = Math.round(
                       frame.getBoundingClientRect().height
@@ -376,9 +384,15 @@ export function HtmlPreview(editor: Editor) {
                       if (axis !== "width") {
                         frame.style.height = `${Math.max(
                           200,
-                          Math.min(2000, startHeight + moveEvent.clientY - startY)
+                          Math.min(
+                            2000,
+                            startHeight + moveEvent.clientY - startY
+                          )
                         )}px`;
                       }
+                      moved ||=
+                        (axis !== "height" && moveEvent.clientX !== startX) ||
+                        (axis !== "width" && moveEvent.clientY !== startY);
                     };
                     const finish = (endEvent: PointerEvent) => {
                       if (endEvent.pointerId !== event.pointerId) {
@@ -386,7 +400,10 @@ export function HtmlPreview(editor: Editor) {
                       }
                       handle.removeEventListener("pointermove", move);
                       handle.removeEventListener("pointerup", finish);
-                      handle.removeEventListener("pointercancel", finish);
+                      handle.removeEventListener("pointercancel", cancel);
+                      if (!moved) {
+                        return;
+                      }
                       setDimensions(
                         axis === "height"
                           ? Number(block.node.attrs.previewWidth) || 100
@@ -400,9 +417,22 @@ export function HtmlPreview(editor: Editor) {
                           : Math.round(frame.getBoundingClientRect().height)
                       );
                     };
+                    const cancel = (cancelEvent: PointerEvent) => {
+                      if (cancelEvent.pointerId !== event.pointerId) {
+                        return;
+                      }
+                      handle.removeEventListener("pointermove", move);
+                      handle.removeEventListener("pointerup", finish);
+                      handle.removeEventListener("pointercancel", cancel);
+                      frame.style.width = startWidthStyle;
+                      frame.style.height = startHeightStyle;
+                    };
+                    let moved = false;
+                    const startWidthStyle = frame.style.width;
+                    const startHeightStyle = frame.style.height;
                     handle.addEventListener("pointermove", move);
                     handle.addEventListener("pointerup", finish);
-                    handle.addEventListener("pointercancel", finish);
+                    handle.addEventListener("pointercancel", cancel);
                   });
                   return handle;
                 };
@@ -449,7 +479,7 @@ export function HtmlPreview(editor: Editor) {
     key: previewKey,
     state: {
       init: (_, state) => build(state, null),
-      apply: (tr, previous, _old, state) => {
+      apply: (tr, previous, oldState, state) => {
         let editingPos =
           previous.editingPos === null
             ? null
@@ -459,7 +489,15 @@ export function HtmlPreview(editor: Editor) {
           editingPos = meta;
         } else if (tr.docChanged && !isRemoteTransaction(tr, state)) {
           const selected = findParentNode(isHtmlPreview)(state.selection);
-          if (selected) {
+          const previousSelected = findParentNode(isHtmlPreview)(
+            oldState.selection
+          );
+          if (
+            selected &&
+            (!previousSelected ||
+              tr.mapping.map(previousSelected.pos) !== selected.pos ||
+              previousSelected.node.textContent !== selected.node.textContent)
+          ) {
             editingPos = selected.pos;
           }
         }
@@ -479,6 +517,26 @@ export function HtmlPreview(editor: Editor) {
       decorations(state) {
         return this.getState(state)?.decorations;
       },
+    },
+    view: () => {
+      let readOnly = editor.props.readOnly;
+      return {
+        update(view) {
+          if (readOnly === editor.props.readOnly) {
+            return;
+          }
+          readOnly = editor.props.readOnly;
+          queueMicrotask(() => {
+            if (!view.isDestroyed) {
+              view.dispatch(
+                view.state.tr
+                  .setMeta(previewKey, null)
+                  .setMeta("addToHistory", false)
+              );
+            }
+          });
+        },
+      };
     },
   });
 }
