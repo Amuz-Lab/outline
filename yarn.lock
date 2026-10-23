@@ -15411,6 +15411,7 @@ __metadata:
     fetch-retry: "npm:^5.0.6"
     form-data: "npm:^4.0.6"
     fractional-index: "npm:^1.0.0"
+    fflate: "npm:^0.8.2"
     framer-motion: "npm:^13.1.1"
     franc: "npm:^6.2.0"
     fs-extra: "npm:^11.3.6"
