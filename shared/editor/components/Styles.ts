@@ -1874,6 +1874,10 @@ mark {
   }
 }
 
+.ProseMirror[contenteditable="false"] .outline-html-preview-resize {
+  display: none;
+}
+
 .outline-html-preview-toolbar {
   display: flex;
   align-items: center;
