@@ -1,5 +1,19 @@
 import { parser, serializer } from ".";
 
+test("preserves HTML preview dimensions through server Markdown conversion", () => {
+  const markdown = "```html-preview width=83 height=6500\n<p>Preview</p>\n```";
+  const ast = parser.parse(markdown);
+  expect(ast.firstChild?.attrs).toMatchObject({
+    previewWidth: 83,
+    previewHeight: 6500,
+  });
+  const restored = parser.parse(serializer.serialize(ast));
+  expect(restored.firstChild?.attrs).toMatchObject({
+    previewWidth: 83,
+    previewHeight: 6500,
+  });
+});
+
 test("renders an empty doc", () => {
   const ast = parser.parse("");
 

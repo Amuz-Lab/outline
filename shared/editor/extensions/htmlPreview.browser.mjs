@@ -229,6 +229,30 @@ try {
     )
   );
   assert.equal(await cssTarget.textContent(), "Imported CSS");
+  await uploadZip({
+    "index.html":
+      '<link rel="stylesheet" href="main.css"><p id="external">External import</p>',
+    "main.css": '@import "child.css" screen;',
+    "child.css": '@import url("https://fonts.googleapis.com/review.css");',
+  });
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".outline-html-preview-notice")
+      .textContent.includes("External CSS @import")
+  );
+  assert.equal(await cssTarget.textContent(), "Imported CSS");
+  await uploadZip({
+    "index.html":
+      '<link rel="stylesheet" href="main.css"><p id="namespace">Namespace isolation</p>',
+    "main.css": '@import "child.css"; p { color: rgb(4, 5, 6) }',
+    "child.css": "@namespace url(http://www.w3.org/2000/svg);",
+  });
+  const namespace = page.frameLocator("iframe").locator("#namespace");
+  await namespace.waitFor();
+  assert.equal(
+    await namespace.evaluate((element) => getComputedStyle(element).color),
+    "rgb(4, 5, 6)"
+  );
   assert.deepEqual(errors, []);
   await reset({ width: 80, height: 480 });
   await mkdir(path.join(root, "build"), { recursive: true });
@@ -236,7 +260,7 @@ try {
     path: path.join(root, "build/html-preview-browser.png"),
   });
   console.log(
-    "PASS: Preview/Source completion, exact dimension controls, three resize directions, undo, tall auto height, ignored-axis movement, drag/auto-height isolation, pointer cancel, Auto height, Reset size, nested CSS import rendering, disabled CSS, missing-resource errors without data loss"
+    "PASS: Preview/Source completion, dimension controls, resize/undo/cancel, auto height, nested CSS rendering, namespace isolation, disabled CSS, missing and unsupported imports preserve original content"
   );
 } finally {
   await browser?.close();

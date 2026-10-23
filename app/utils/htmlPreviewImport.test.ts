@@ -117,11 +117,17 @@ describe("collection HTML preview import", () => {
     });
     const result = await readHtmlPreviewFile(file);
 
-    expect(result?.source).toContain("@layer theme");
-    expect(result?.source).toContain("@supports (display: grid)");
-    expect(result?.source).toContain("@media screen and (min-width: 400px)");
-    expect(result?.source).toContain("data:image/svg+xml;base64,");
-    expect(result?.source).toContain('content: "@import ignored.css;"');
+    expect(result?.source).toContain(
+      "layer(theme) supports(display: grid) screen and (min-width: 400px)"
+    );
+    const theme = atob(
+      result!.source.match(/data:text\/css;base64,([A-Za-z0-9+/=]+)/)![1]
+    );
+    expect(theme).toContain("data:image/svg+xml;base64,");
+    const base = atob(
+      theme.match(/data:text\/css;base64,([A-Za-z0-9+/=]+)/)![1]
+    );
+    expect(base).toContain('content: "@import ignored.css;"');
   });
   it("rejects circular CSS imports with the affected paths", async () => {
     const file = await zipFile({

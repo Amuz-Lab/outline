@@ -13,7 +13,7 @@ import {
   MAX_HTML_PREVIEW_BYTES,
   MAX_HTML_PREVIEW_HEIGHT,
 } from "./htmlPreviewSource";
-import { readHtmlPreviewSource } from "~/utils/htmlPreviewImport";
+import { readHtmlPreviewSource } from "./htmlPreviewImport";
 
 interface PreviewState {
   editingPos: number | null;
