@@ -1,4 +1,5 @@
 import { readHtmlPreviewFile } from "./htmlPreviewImport";
+import JSZip from "jszip";
 
 function htmlFile(
   source: string,
@@ -7,6 +8,19 @@ function htmlFile(
 ) {
   const file = new File([source], name, { type });
   Object.defineProperty(file, "text", { value: async () => source });
+  return file;
+}
+
+async function zipFile(files: Record<string, string>) {
+  const zip = new JSZip();
+  Object.entries(files).forEach(([path, content]) => zip.file(path, content));
+  const bytes = await zip.generateAsync({ type: "uint8array" });
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const file = new File([copy.buffer], "site.zip", { type: "application/zip" });
+  Object.defineProperty(file, "arrayBuffer", {
+    value: async () => copy.buffer,
+  });
   return file;
 }
 
@@ -34,5 +48,26 @@ describe("collection HTML preview import", () => {
     await expect(
       readHtmlPreviewFile(htmlFile("x".repeat(1024 * 1024 + 1)))
     ).rejects.toThrow("1 MiB");
+  });
+  it("embeds relative CSS and images from a ZIP", async () => {
+    const file = await zipFile({
+      "index.html":
+        '<link rel="stylesheet" href="styles/site.css"><img src="images/logo.svg">',
+      "styles/site.css": "body { background: url('../images/bg.png') }",
+      "images/logo.svg": "<svg></svg>",
+      "images/bg.png": "image bytes",
+    });
+    const result = await readHtmlPreviewFile(file);
+
+    expect(result?.title).toBe("index");
+    expect(result?.text).toContain("data:image/svg+xml;base64,");
+    expect(result?.text).toContain("data:image/png;base64,");
+    expect(result?.text).toContain("<style>");
+  });
+  it("requires exactly one HTML page in a ZIP", async () => {
+    const file = await zipFile({ "one.html": "", "two.htm": "" });
+    await expect(readHtmlPreviewFile(file)).rejects.toThrow(
+      "exactly one .html or .htm file"
+    );
   });
 });

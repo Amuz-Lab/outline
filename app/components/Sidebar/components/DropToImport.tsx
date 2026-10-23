@@ -69,7 +69,7 @@ const ImportDropzone = observer(function ImportDropzone({
 
   return (
     <Dropzone
-      accept={documents.importFileTypesString}
+      accept={`${documents.importFileTypesString},.zip,application/zip`}
       onDropAccepted={handleFiles}
       onDropRejected={handleRejection}
       noClick

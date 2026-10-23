@@ -8,10 +8,8 @@ import { findParentNode } from "../queries/findParentNode";
 import { hashString } from "../../utils/string";
 import { isRemoteTransaction } from "../lib/multiplayer";
 import { v4 as uuidv4 } from "uuid";
-import {
-  createHtmlPreviewSource,
-  MAX_HTML_PREVIEW_BYTES,
-} from "./htmlPreviewSource";
+import { createHtmlPreviewSource } from "./htmlPreviewSource";
+import { readHtmlPreviewSource } from "~/utils/htmlPreviewImport";
 
 interface PreviewState {
   editingPos: number | null;
@@ -83,7 +81,7 @@ export function HtmlPreview(editor: Editor) {
             if (!editor.props.readOnly) {
               const input = document.createElement("input");
               input.type = "file";
-              input.accept = ".html,.htm,text/html";
+              input.accept = ".html,.htm,.zip,text/html,application/zip";
               input.hidden = true;
               input.addEventListener("change", async () => {
                 const file = input.files?.[0];
@@ -91,10 +89,11 @@ export function HtmlPreview(editor: Editor) {
                   return;
                 }
                 try {
-                  if (file.size > MAX_HTML_PREVIEW_BYTES) {
-                    throw new Error("HTML must be at most 1 MiB.");
+                  const preview = await readHtmlPreviewSource(file);
+                  if (!preview) {
+                    return;
                   }
-                  const text = await file.text();
+                  const { source: text } = preview;
                   if (view.state.doc.nodeAt(block.pos) !== block.node) {
                     throw new Error(
                       "Document changed. Select the HTML block again."
