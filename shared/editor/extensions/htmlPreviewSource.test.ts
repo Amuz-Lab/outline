@@ -23,15 +23,37 @@ describe("HTML preview source", () => {
       "connect-src 'none'"
     );
   });
-  it("removes external scripts, refresh redirects and base elements", () => {
+  it("adds a viewport for responsive previews and reports runtime restrictions", () => {
+    const result = createHtmlPreviewSource("<p>responsive</p>", "n", "channel");
+    const doc = new DOMParser().parseFromString(result, "text/html");
+    expect(doc.querySelector('meta[name="viewport"]')?.content).toBe(
+      "width=device-width, initial-scale=1"
+    );
+    expect(result).toContain("outline-html-diagnostic");
+    expect(result).toContain("securitypolicyviolation");
+  });
+  it("preserves an existing viewport setting", () => {
+    const result = createHtmlPreviewSource(
+      '<meta name="viewport" content="width=900">',
+      "n"
+    );
+    const doc = new DOMParser().parseFromString(result, "text/html");
+    expect(doc.querySelectorAll('meta[name="viewport"]')).toHaveLength(1);
+    expect(doc.querySelector('meta[name="viewport"]')?.content).toBe(
+      "width=900"
+    );
+  });
+  it("leaves external scripts to the frame policy and removes redirects and base elements", () => {
     const result = createHtmlPreviewSource(
       '<base href="https://example.com"><meta http-equiv="refresh" content="0;url=https://example.com"><script src="https://example.com/a.js"></script><p>retained</p>',
       "n"
     );
     const doc = new DOMParser().parseFromString(result, "text/html");
-    expect(
-      doc.querySelector("script[src], base, meta[http-equiv=refresh]")
-    ).toBeNull();
+    expect(doc.querySelector("script[src]")).not.toBeNull();
+    expect(doc.querySelector("base, meta[http-equiv=refresh]")).toBeNull();
+    expect(doc.head.firstElementChild?.getAttribute("content")).toContain(
+      "script-src 'unsafe-inline'"
+    );
     expect(doc.body.textContent).toContain("retained");
   });
   it("preserves literal closing tags and backticks without injecting into the parent", () => {

@@ -45,8 +45,13 @@ export function HtmlPreview(editor: Editor) {
             const wrapper = document.createElement("section");
             wrapper.contentEditable = "false";
             wrapper.setAttribute("aria-label", "HTML preview");
-            wrapper.style.cssText =
-              "border:1px solid #90909066;border-radius:8px;margin:12px 0;padding:10px;";
+            wrapper.style.boxSizing = "border-box";
+            wrapper.style.maxWidth = "100%";
+            wrapper.style.minWidth = "0";
+            wrapper.style.border = "1px solid #90909066";
+            wrapper.style.borderRadius = "8px";
+            wrapper.style.margin = "12px 0";
+            wrapper.style.padding = "10px";
             const toolbar = document.createElement("div");
             toolbar.style.cssText =
               "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;";
@@ -126,7 +131,14 @@ export function HtmlPreview(editor: Editor) {
               );
               const link = document.createElement("a");
               link.href = url;
-              link.download = "document.html";
+              const title = window.document.title
+                .split(" - ")
+                .slice(0, -1)
+                .join(" - ");
+              const fileName =
+                title.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").trim() ||
+                "document";
+              link.download = `${fileName}.html`;
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             });
@@ -136,9 +148,17 @@ export function HtmlPreview(editor: Editor) {
                 const iframe = document.createElement("iframe");
                 iframe.title = "HTML document preview";
                 iframe.setAttribute("sandbox", "allow-scripts");
+                iframe.allowFullscreen = true;
                 iframe.referrerPolicy = "no-referrer";
                 iframe.style.cssText =
-                  "display:block;width:100%;height:200px;border:0;";
+                  "display:block;width:100%;max-width:100%;height:200px;border:0;";
+                const diagnostics = new Set<string>();
+                addButton("Full screen", () => {
+                  void iframe.requestFullscreen().catch(() => {
+                    notice.textContent =
+                      "Could not open the full-screen preview.";
+                  });
+                });
                 const script = document.querySelector("script[nonce]");
                 const nonce =
                   script instanceof HTMLScriptElement ? script.nonce : "";
@@ -147,8 +167,27 @@ export function HtmlPreview(editor: Editor) {
                   if (
                     event.source !== iframe.contentWindow ||
                     !event.data ||
-                    event.data.type !== "outline-html-height" ||
                     event.data.channel !== channel ||
+                    typeof event.data.type !== "string"
+                  ) {
+                    return;
+                  }
+                  if (event.data.type === "outline-html-diagnostic") {
+                    if (
+                      event.data.kind === "script-error" ||
+                      event.data.kind === "blocked-resource"
+                    ) {
+                      diagnostics.add(
+                        event.data.kind === "script-error"
+                          ? "A script failed in the preview."
+                          : "Some external resources were blocked by the preview security policy."
+                      );
+                      notice.textContent = [...diagnostics].join(" ");
+                    }
+                    return;
+                  }
+                  if (
+                    event.data.type !== "outline-html-height" ||
                     typeof event.data.height !== "number" ||
                     !Number.isFinite(event.data.height)
                   ) {

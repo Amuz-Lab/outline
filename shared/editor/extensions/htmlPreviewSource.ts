@@ -13,11 +13,28 @@ export function createHtmlPreviewSource(
     );
   }
   const doc = new DOMParser().parseFromString(source, "text/html");
+  if (!doc.head.querySelector('meta[name="viewport" i]')) {
+    const viewport = doc.createElement("meta");
+    viewport.name = "viewport";
+    viewport.content = "width=device-width, initial-scale=1";
+    doc.head.append(viewport);
+  }
   const nonceAttribute = "data-preview-nonce-" + uuidv4();
   if (channel) {
     const bridge = doc.createElement("script");
     bridge.textContent = `(() => {
       const channel = ${JSON.stringify(channel).replace(/</g, "\\u003c")};
+      const sendDiagnostic = kind => parent.postMessage(
+        {type: 'outline-html-diagnostic', channel, kind}, '*'
+      );
+      addEventListener('error', event => {
+        if (event instanceof ErrorEvent) {
+          sendDiagnostic('script-error');
+        }
+      });
+      addEventListener('securitypolicyviolation', () => {
+        sendDiagnostic('blocked-resource');
+      });
       let previous = 0, pending = false;
       const report = () => {
         pending = false;
@@ -32,16 +49,23 @@ export function createHtmlPreviewSource(
         }
       };
       const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(report); } };
-      new ResizeObserver(schedule).observe(document.body);
+      const observe = () => {
+        if (document.body) new ResizeObserver(schedule).observe(document.body);
+        schedule();
+      };
+      if (document.readyState === 'loading') {
+        addEventListener('DOMContentLoaded', observe, {once: true});
+      } else {
+        observe();
+      }
       addEventListener('load', schedule);
       addEventListener('resize', schedule);
       document.fonts?.ready.then(schedule);
-      schedule();
     })();`;
-    doc.body.append(bridge);
+    doc.head.prepend(bridge);
   }
   doc
-    .querySelectorAll("script[src], meta[http-equiv=refresh i], base")
+    .querySelectorAll("meta[http-equiv=refresh i], base")
     .forEach((el) => el.remove());
   doc.querySelectorAll("script").forEach((script) => {
     script.removeAttribute("nonce");
