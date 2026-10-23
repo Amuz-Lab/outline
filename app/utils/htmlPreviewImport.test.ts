@@ -117,17 +117,11 @@ describe("collection HTML preview import", () => {
     });
     const result = await readHtmlPreviewFile(file);
 
-    expect(result?.source).toContain(
-      "layer(theme) supports(display: grid) screen and (min-width: 400px)"
-    );
-    const theme = atob(
-      result!.source.match(/data:text\/css;base64,([A-Za-z0-9+/=]+)/)![1]
-    );
-    expect(theme).toContain("data:image/svg+xml;base64,");
-    const base = atob(
-      theme.match(/data:text\/css;base64,([A-Za-z0-9+/=]+)/)![1]
-    );
-    expect(base).toContain('content: "@import ignored.css;"');
+    expect(result?.source).toContain("@layer theme");
+    expect(result?.source).toContain("@supports (display: grid)");
+    expect(result?.source).toContain("@media screen and (min-width: 400px)");
+    expect(result?.source).toContain("data:image/svg+xml;base64,");
+    expect(result?.source).toContain('content: "@import ignored.css;"');
   });
   it("rejects circular CSS imports with the affected paths", async () => {
     const file = await zipFile({
@@ -139,6 +133,23 @@ describe("collection HTML preview import", () => {
       "Circular CSS @import: a.css -> b.css -> a.css"
     );
   });
+  it.each([
+    [
+      '@import url("https://fonts.googleapis.com/review.css");',
+      "External CSS @import",
+    ],
+    ["@namespace url(http://www.w3.org/2000/svg);", "CSS @namespace"],
+  ])(
+    "rejects imports that cannot be flattened without changing behavior: %s",
+    async (css, message) => {
+      const file = await zipFile({
+        "index.html": '<link rel="stylesheet" href="main.css">',
+        "main.css": '@import "child.css" screen; p { color: red }',
+        "child.css": css,
+      });
+      await expect(readHtmlPreviewFile(file)).rejects.toThrow(message);
+    }
+  );
   it("names the importing CSS when a nested resource is missing", async () => {
     const file = await zipFile({
       "index.html": '<link rel="stylesheet" href="styles/site.css">',

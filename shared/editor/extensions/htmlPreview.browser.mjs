@@ -247,12 +247,12 @@ try {
     "main.css": '@import "child.css"; p { color: rgb(4, 5, 6) }',
     "child.css": "@namespace url(http://www.w3.org/2000/svg);",
   });
-  const namespace = page.frameLocator("iframe").locator("#namespace");
-  await namespace.waitFor();
-  assert.equal(
-    await namespace.evaluate((element) => getComputedStyle(element).color),
-    "rgb(4, 5, 6)"
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".outline-html-preview-notice")
+      .textContent.includes("CSS @namespace")
   );
+  assert.equal(await cssTarget.textContent(), "Imported CSS");
   assert.deepEqual(errors, []);
   await reset({ width: 80, height: 480 });
   await mkdir(path.join(root, "build"), { recursive: true });

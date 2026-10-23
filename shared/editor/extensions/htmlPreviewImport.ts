@@ -1,5 +1,6 @@
 import { unzipSync } from "fflate";
-import { parse } from "postcss";
+import { atRule, parse } from "postcss";
+import type { ChildNode } from "postcss";
 import valueParser from "postcss-value-parser";
 import { MAX_HTML_PREVIEW_BYTES } from "@shared/editor/extensions/htmlPreviewSource";
 
@@ -89,6 +90,17 @@ function rewriteCss(
   }
   try {
     const root = parse(css);
+    if (
+      stack.length > 1 &&
+      root.nodes.some(
+        (node) =>
+          node.type === "atrule" && node.name.toLowerCase() === "namespace"
+      )
+    ) {
+      throw new Error(
+        "CSS @namespace in an imported ZIP stylesheet is not supported. Remove the namespace or keep it in a separate top-level stylesheet."
+      );
+    }
     root.walkAtRules(/^charset$/i, (rule) => {
       rule.remove();
     });
@@ -130,13 +142,44 @@ function rewriteCss(
         [...stack, path],
         budget
       );
-      const url = dataUrl(path, { [path]: new TextEncoder().encode(imported) });
-      budget.bytes += url.length;
-      if (budget.bytes > MAX_ARCHIVE_CONTENT_BYTES) {
-        throw new Error("Expanded CSS resources exceed 10 MiB.");
+      const conditions: { name: string; params: string }[] = [];
+      let offset = 1;
+      const layer = parts[offset];
+      if (
+        (layer?.type === "word" || layer?.type === "function") &&
+        layer.value.toLowerCase() === "layer"
+      ) {
+        conditions.push({
+          name: "layer",
+          params:
+            layer.type === "function" ? valueParser.stringify(layer.nodes) : "",
+        });
+        offset++;
       }
-      // Preserve stylesheet scope and let the browser apply import qualifiers.
-      rule.params = `url("${url}")${rule.params.slice(first.sourceEndIndex)}`;
+      const supports = parts[offset];
+      if (
+        supports?.type === "function" &&
+        supports.value.toLowerCase() === "supports"
+      ) {
+        conditions.push({
+          name: "supports",
+          params: `(${valueParser.stringify(supports.nodes)})`,
+        });
+        offset++;
+      }
+      const media = rule.params
+        .slice(parts[offset]?.sourceIndex ?? rule.params.length)
+        .trim();
+      if (media) {
+        conditions.push({ name: "media", params: media });
+      }
+      let nodes: ChildNode[] = parse(imported).nodes;
+      for (const condition of conditions.reverse()) {
+        const wrapper = atRule(condition);
+        wrapper.append(nodes);
+        nodes = [wrapper];
+      }
+      rule.replaceWith(...nodes);
     });
     root.walkDecls((declaration) => {
       const value = valueParser(declaration.value);

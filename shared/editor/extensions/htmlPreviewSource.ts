@@ -88,7 +88,7 @@ export function createHtmlPreviewSource(
   policy.content = [
     "default-src 'none'",
     "script-src 'unsafe-inline'",
-    "style-src 'unsafe-inline' data: https://fonts.googleapis.com",
+    "style-src 'unsafe-inline' https://fonts.googleapis.com",
     "img-src data: blob:",
     "font-src https://fonts.gstatic.com data:",
     "connect-src 'none'",
