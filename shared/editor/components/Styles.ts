@@ -1902,6 +1902,11 @@ mark {
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease;
 
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
   &:hover {
     background: ${props.theme.backgroundSecondary};
     border-color: ${props.theme.selected};
@@ -1911,6 +1916,12 @@ mark {
     outline: 2px solid ${props.theme.selected};
     outline-offset: 2px;
   }
+}
+
+.outline-html-preview-size {
+  margin-left: auto;
+  color: ${props.theme.textSecondary};
+  font-size: 12px;
 }
 
 .outline-html-preview-control {

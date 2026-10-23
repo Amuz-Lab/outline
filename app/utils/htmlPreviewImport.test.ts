@@ -105,4 +105,50 @@ describe("collection HTML preview import", () => {
       "exactly one .html or .htm file"
     );
   });
+  it("expands nested CSS imports with relative assets and import conditions", async () => {
+    const file = await zipFile({
+      "index.html": '<link rel="stylesheet" href="styles/site.css">',
+      "styles/site.css":
+        '@import "nested/theme.css" layer(theme) supports(display: grid) screen and (min-width: 400px); body { margin: 0 }',
+      "styles/nested/theme.css":
+        "@import url(../base.css); .logo { background: url(../../images/logo.svg) }",
+      "styles/base.css": 'p::before { content: "@import ignored.css;" }',
+      "images/logo.svg": "<svg></svg>",
+    });
+    const result = await readHtmlPreviewFile(file);
+
+    expect(result?.source).toContain("@layer theme");
+    expect(result?.source).toContain("@supports (display: grid)");
+    expect(result?.source).toContain("@media screen and (min-width: 400px)");
+    expect(result?.source).toContain("data:image/svg+xml;base64,");
+    expect(result?.source).toContain('content: "@import ignored.css;"');
+  });
+  it("rejects circular CSS imports with the affected paths", async () => {
+    const file = await zipFile({
+      "index.html": '<link rel="stylesheet" href="a.css">',
+      "a.css": '@import "b.css";',
+      "b.css": '@import "a.css";',
+    });
+    await expect(readHtmlPreviewFile(file)).rejects.toThrow(
+      "Circular CSS @import: a.css -> b.css -> a.css"
+    );
+  });
+  it("names the importing CSS when a nested resource is missing", async () => {
+    const file = await zipFile({
+      "index.html": '<link rel="stylesheet" href="styles/site.css">',
+      "styles/site.css": '@import "missing.css";',
+    });
+    await expect(readHtmlPreviewFile(file)).rejects.toThrow(
+      /styles\/missing.css.*styles\/site.css/
+    );
+  });
+  it("reports the converted size when embedded ZIP resources exceed the limit", async () => {
+    const file = await zipFile({
+      "index.html": '<img src="large.png">',
+      "large.png": "x".repeat(800 * 1024),
+    });
+    await expect(readHtmlPreviewFile(file)).rejects.toThrow(
+      /1 MiB.*converted size: [\d.]+ MiB/
+    );
+  });
 });

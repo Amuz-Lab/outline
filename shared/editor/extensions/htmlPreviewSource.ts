@@ -1,6 +1,9 @@
 /** Maximum source size accepted by the preview renderer. */
 export const MAX_HTML_PREVIEW_BYTES = 1024 * 1024;
 
+/** Maximum automatic or manually selected preview height, in pixels. */
+export const MAX_HTML_PREVIEW_HEIGHT = 50000;
+
 /** Prepare a parsed HTML page for a sandboxed srcdoc without weakening parent CSP. */
 export function createHtmlPreviewSource(
   source: string,
@@ -49,6 +52,12 @@ export function createHtmlPreviewSource(
         }
       };
       const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(report); } };
+      addEventListener('message', event => {
+        if (event.source === parent && event.data?.channel === channel && event.data.type === 'outline-html-measure') {
+          previous = 0;
+          schedule();
+        }
+      });
       const observe = () => {
         if (document.body) new ResizeObserver(schedule).observe(document.body);
         schedule();

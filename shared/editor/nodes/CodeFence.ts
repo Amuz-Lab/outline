@@ -1,4 +1,5 @@
 import { HtmlPreview } from "../extensions/HtmlPreview";
+import { MAX_HTML_PREVIEW_HEIGHT } from "../extensions/htmlPreviewSource";
 import copy from "copy-to-clipboard";
 import { t } from "i18next";
 import type Token from "markdown-it/lib/token.mjs";
@@ -95,7 +96,9 @@ function parsePreviewDimensions(info: string) {
       Number.isInteger(width) && width >= 25 && width <= 100 ? width : 100,
     previewHeight:
       height === 0 ||
-      (Number.isInteger(height) && height >= 200 && height <= 2000)
+      (Number.isInteger(height) &&
+        height >= 200 &&
+        height <= MAX_HTML_PREVIEW_HEIGHT)
         ? height
         : 0,
   };

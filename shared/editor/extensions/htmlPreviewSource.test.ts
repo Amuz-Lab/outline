@@ -90,16 +90,16 @@ describe("HTML preview source", () => {
     const doc = schema.node("doc", null, [
       schema.node(
         "code_fence",
-        { language: "html-preview", previewWidth: 75, previewHeight: 650 },
+        { language: "html-preview", previewWidth: 75, previewHeight: 6500 },
         schema.text("<p>Preview</p>")
       ),
     ]);
     const markdown = serializer.serialize(doc);
     const restored = parser.parse(markdown)?.firstChild;
 
-    expect(markdown).toContain("html-preview width=75 height=650");
+    expect(markdown).toContain("html-preview width=75 height=6500");
     expect(restored?.attrs.previewWidth).toBe(75);
-    expect(restored?.attrs.previewHeight).toBe(650);
+    expect(restored?.attrs.previewHeight).toBe(6500);
   });
   it("recreates preview controls when saved dimensions change", () => {
     const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);

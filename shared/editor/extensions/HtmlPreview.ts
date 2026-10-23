@@ -8,7 +8,11 @@ import { findParentNode } from "../queries/findParentNode";
 import { hashString } from "../../utils/string";
 import { isRemoteTransaction } from "../lib/multiplayer";
 import { v4 as uuidv4 } from "uuid";
-import { createHtmlPreviewSource } from "./htmlPreviewSource";
+import {
+  createHtmlPreviewSource,
+  MAX_HTML_PREVIEW_BYTES,
+  MAX_HTML_PREVIEW_HEIGHT,
+} from "./htmlPreviewSource";
 import { readHtmlPreviewSource } from "~/utils/htmlPreviewImport";
 
 interface PreviewState {
@@ -51,6 +55,15 @@ export function HtmlPreview(editor: Editor) {
             const notice = document.createElement("p");
             notice.setAttribute("role", "status");
             notice.className = "outline-html-preview-notice";
+            const previewWidth = Math.max(
+              25,
+              Math.min(100, Number(block.node.attrs.previewWidth) || 100)
+            );
+            const savedHeight = Number(block.node.attrs.previewHeight) || 0;
+            const previewHeight =
+              savedHeight === 0
+                ? 0
+                : Math.max(200, Math.min(MAX_HTML_PREVIEW_HEIGHT, savedHeight));
             const addButton = (label: string, handleClick: () => void) => {
               const button = document.createElement("button");
               button.type = "button";
@@ -61,6 +74,7 @@ export function HtmlPreview(editor: Editor) {
               );
               button.addEventListener("click", handleClick);
               toolbar.append(button);
+              return button;
             };
             const setDimensions = (width: number, height: number) => {
               if (editor.props.readOnly) {
@@ -74,17 +88,19 @@ export function HtmlPreview(editor: Editor) {
                     ...block.node.attrs,
                     previewWidth: Math.max(25, Math.min(100, width)),
                     previewHeight:
-                      height === 0 ? 0 : Math.max(200, Math.min(2000, height)),
+                      height === 0
+                        ? 0
+                        : Math.max(
+                            200,
+                            Math.min(MAX_HTML_PREVIEW_HEIGHT, height)
+                          ),
                   })
                   .setMeta(previewKey, editingPos)
               );
             };
             if (editing && !editor.props.readOnly) {
-              const width = Math.max(
-                25,
-                Math.min(100, Number(block.node.attrs.previewWidth) || 100)
-              );
-              const height = Number(block.node.attrs.previewHeight) || 0;
+              const width = previewWidth;
+              const height = previewHeight;
               const rangeControl = (
                 name: string,
                 min: number,
@@ -119,15 +135,15 @@ export function HtmlPreview(editor: Editor) {
                 "Width",
                 25,
                 100,
-                5,
+                1,
                 width,
                 (value) => setDimensions(value, height)
               );
               const heightControl = rangeControl(
                 "Height",
                 200,
-                2000,
-                50,
+                MAX_HTML_PREVIEW_HEIGHT,
+                1,
                 height || 600,
                 (value) => setDimensions(width, value)
               );
@@ -170,6 +186,13 @@ export function HtmlPreview(editor: Editor) {
               }
             });
             if (!editor.props.readOnly) {
+              if (!editing) {
+                addButton("Auto height", () =>
+                  setDimensions(previewWidth, 0)
+                ).disabled = previewHeight === 0;
+              }
+              addButton("Reset size", () => setDimensions(100, 0)).disabled =
+                previewWidth === 100 && previewHeight === 0;
               const input = document.createElement("input");
               input.type = "file";
               input.accept = ".html,.htm,.zip,text/html,application/zip";
@@ -228,6 +251,11 @@ export function HtmlPreview(editor: Editor) {
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             });
+            const size = document.createElement("span");
+            size.className = "outline-html-preview-size";
+            size.title = "HTML size including embedded resources";
+            size.textContent = `${(new TextEncoder().encode(source).byteLength / 1024).toFixed(1)} / ${MAX_HTML_PREVIEW_BYTES / 1024} KiB`;
+            toolbar.append(size);
             wrapper.append(toolbar, notice);
             if (!editing && source.trim()) {
               try {
@@ -236,12 +264,6 @@ export function HtmlPreview(editor: Editor) {
                 iframe.setAttribute("sandbox", "allow-scripts");
                 iframe.allowFullscreen = true;
                 iframe.referrerPolicy = "no-referrer";
-                const previewWidth = Math.max(
-                  25,
-                  Math.min(100, Number(block.node.attrs.previewWidth) || 100)
-                );
-                const previewHeight =
-                  Number(block.node.attrs.previewHeight) || 0;
                 const frame = document.createElement("div");
                 frame.className = "outline-html-preview-frame";
                 frame.style.width = `${previewWidth}%`;
@@ -259,6 +281,8 @@ export function HtmlPreview(editor: Editor) {
                 const nonce =
                   script instanceof HTMLScriptElement ? script.nonce : "";
                 const channel = uuidv4();
+                let resizing = false;
+                let cancelResize: (() => void) | undefined;
                 const handleMessage = (event: MessageEvent) => {
                   if (
                     event.source !== iframe.contentWindow ||
@@ -285,17 +309,19 @@ export function HtmlPreview(editor: Editor) {
                   if (
                     event.data.type !== "outline-html-height" ||
                     previewHeight !== 0 ||
+                    resizing ||
                     typeof event.data.height !== "number" ||
                     !Number.isFinite(event.data.height)
                   ) {
                     return;
                   }
-                  frame.style.height = `${Math.min(50000, Math.max(100, Math.ceil(event.data.height)))}px`;
+                  frame.style.height = `${Math.min(MAX_HTML_PREVIEW_HEIGHT, Math.max(100, Math.ceil(event.data.height)))}px`;
                 };
                 window.addEventListener("message", handleMessage);
-                cleanups.set(wrapper, () =>
-                  window.removeEventListener("message", handleMessage)
-                );
+                cleanups.set(wrapper, () => {
+                  cancelResize?.();
+                  window.removeEventListener("message", handleMessage);
+                });
                 iframe.srcdoc = createHtmlPreviewSource(source, nonce, channel);
                 const availableWidth = () => {
                   const parent = frame.parentElement;
@@ -359,80 +385,112 @@ export function HtmlPreview(editor: Editor) {
                     );
                   });
                   handle.addEventListener("pointerdown", (event) => {
+                    if (
+                      event.button !== 0 ||
+                      editor.props.readOnly ||
+                      resizing
+                    ) {
+                      return;
+                    }
                     event.preventDefault();
                     handle.setPointerCapture(event.pointerId);
+                    resizing = true;
                     const startX = event.clientX;
                     const startY = event.clientY;
                     const startWidth = frame.getBoundingClientRect().width;
                     const startHeight = frame.getBoundingClientRect().height;
                     const containerWidth = availableWidth();
+                    const startWidthStyle = frame.style.width;
+                    const startHeightStyle = frame.style.height;
+                    const startPointerEvents = iframe.style.pointerEvents;
+                    iframe.style.pointerEvents = "none";
+                    let nextWidth = previewWidth;
+                    let nextHeight = previewHeight;
                     const move = (moveEvent: PointerEvent) => {
                       if (moveEvent.pointerId !== event.pointerId) {
                         return;
                       }
                       if (axis !== "height") {
-                        frame.style.width = `${Math.max(
-                          25,
-                          Math.min(
-                            100,
-                            ((startWidth + moveEvent.clientX - startX) /
-                              containerWidth) *
-                              100
-                          )
-                        )}%`;
+                        const delta = moveEvent.clientX - startX;
+                        nextWidth =
+                          delta === 0
+                            ? previewWidth
+                            : Math.round(
+                                Math.max(
+                                  25,
+                                  Math.min(
+                                    100,
+                                    ((startWidth + delta * 2) /
+                                      containerWidth) *
+                                      100
+                                  )
+                                )
+                              );
+                        frame.style.width = `${nextWidth}%`;
                       }
                       if (axis !== "width") {
-                        frame.style.height = `${Math.max(
-                          200,
-                          Math.min(
-                            2000,
-                            startHeight + moveEvent.clientY - startY
-                          )
-                        )}px`;
+                        const delta = moveEvent.clientY - startY;
+                        nextHeight =
+                          delta === 0
+                            ? previewHeight
+                            : Math.round(
+                                Math.max(
+                                  200,
+                                  Math.min(
+                                    MAX_HTML_PREVIEW_HEIGHT,
+                                    startHeight + delta
+                                  )
+                                )
+                              );
+                        frame.style.height =
+                          delta === 0 ? startHeightStyle : `${nextHeight}px`;
                       }
-                      moved ||=
-                        (axis !== "height" && moveEvent.clientX !== startX) ||
-                        (axis !== "width" && moveEvent.clientY !== startY);
                     };
-                    const finish = (endEvent: PointerEvent) => {
-                      if (endEvent.pointerId !== event.pointerId) {
+                    const complete = (commit: boolean) => {
+                      if (!resizing) {
                         return;
                       }
                       handle.removeEventListener("pointermove", move);
                       handle.removeEventListener("pointerup", finish);
                       handle.removeEventListener("pointercancel", cancel);
-                      if (!moved) {
+                      handle.removeEventListener("lostpointercapture", cancel);
+                      resizing = false;
+                      cancelResize = undefined;
+                      iframe.style.pointerEvents = startPointerEvents;
+                      if (handle.hasPointerCapture(event.pointerId)) {
+                        handle.releasePointerCapture(event.pointerId);
+                      }
+                      if (
+                        commit &&
+                        !editor.props.readOnly &&
+                        (nextWidth !== previewWidth ||
+                          nextHeight !== previewHeight)
+                      ) {
+                        setDimensions(nextWidth, nextHeight);
                         return;
                       }
-                      setDimensions(
-                        axis === "height"
-                          ? Number(block.node.attrs.previewWidth) || 100
-                          : Math.round(
-                              (frame.getBoundingClientRect().width /
-                                containerWidth) *
-                                100
-                            ),
-                        axis === "width"
-                          ? previewHeight
-                          : Math.round(frame.getBoundingClientRect().height)
-                      );
-                    };
-                    const cancel = (cancelEvent: PointerEvent) => {
-                      if (cancelEvent.pointerId !== event.pointerId) {
-                        return;
-                      }
-                      handle.removeEventListener("pointermove", move);
-                      handle.removeEventListener("pointerup", finish);
-                      handle.removeEventListener("pointercancel", cancel);
                       frame.style.width = startWidthStyle;
                       frame.style.height = startHeightStyle;
+                      iframe.contentWindow?.postMessage(
+                        { type: "outline-html-measure", channel },
+                        "*"
+                      );
                     };
-                    let moved = false;
-                    const startWidthStyle = frame.style.width;
-                    const startHeightStyle = frame.style.height;
+                    const finish = (endEvent: PointerEvent) => {
+                      if (endEvent.pointerId === event.pointerId) {
+                        complete(true);
+                      }
+                    };
+                    const cancel = (cancelEvent: PointerEvent) => {
+                      if (cancelEvent.pointerId === event.pointerId) {
+                        complete(false);
+                      }
+                    };
+                    cancelResize = () => complete(false);
                     handle.addEventListener("pointermove", move);
                     handle.addEventListener("pointerup", finish);
                     handle.addEventListener("pointercancel", cancel);
+                    handle.addEventListener("lostpointercapture", cancel);
                   });
                   return handle;
                 };

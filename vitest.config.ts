@@ -135,6 +135,10 @@ export default defineConfig({
           globals: true,
           environment: "node",
           include: ["shared/**/*.test.{ts,tsx}"],
+          exclude: [
+            ...configDefaults.exclude,
+            "shared/editor/extensions/htmlPreviewSource.test.ts",
+          ],
           setupFiles: ["./__mocks__/console.js", "./shared/test/setup.ts"],
         },
       },

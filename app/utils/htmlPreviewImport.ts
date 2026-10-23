@@ -1,4 +1,7 @@
 import { unzipSync } from "fflate";
+import { atRule, parse } from "postcss";
+import type { ChildNode } from "postcss";
+import valueParser from "postcss-value-parser";
 import { MAX_HTML_PREVIEW_BYTES } from "@shared/editor/extensions/htmlPreviewSource";
 
 const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
@@ -45,11 +48,7 @@ function dataUrl(path: string, files: Record<string, Uint8Array>): string {
   return `data:${contentType};base64,${btoa(binary)}`;
 }
 
-function resourceUrl(
-  reference: string,
-  basePath: string,
-  files: Record<string, Uint8Array>
-): string | undefined {
+function resourcePath(reference: string, basePath: string): string | undefined {
   const trimmed = reference.trim();
   if (!trimmed || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(trimmed)) {
     return undefined;
@@ -64,31 +63,145 @@ function resourceUrl(
   } catch {
     throw new Error(`Invalid ZIP resource path: ${reference}`);
   }
-  return `${dataUrl(path, files)}${resolved.hash}`;
+  return path;
+}
+
+function resourceUrl(
+  reference: string,
+  basePath: string,
+  files: Record<string, Uint8Array>
+): string | undefined {
+  const path = resourcePath(reference, basePath);
+  return path === undefined
+    ? undefined
+    : `${dataUrl(path, files)}${new URL(reference.trim(), `${archiveOrigin}${basePath}`).hash}`;
 }
 
 function rewriteCss(
   css: string,
   basePath: string,
-  files: Record<string, Uint8Array>
+  files: Record<string, Uint8Array>,
+  stack: string[],
+  budget: { bytes: number }
 ): string {
-  for (const match of css.matchAll(
-    /@import\s+(?:url\()?\s*["']?([^"')\s;]+)/gi
-  )) {
-    if (resourceUrl(match[1], basePath, files)) {
-      throw new Error(
-        "Local CSS @import is not supported. Combine the stylesheets first."
-      );
-    }
+  budget.bytes += new TextEncoder().encode(css).byteLength;
+  if (stack.length > 20 || budget.bytes > MAX_ARCHIVE_CONTENT_BYTES) {
+    throw new Error("CSS @import expansion is too large or too deeply nested.");
   }
-  return css.replace(
-    /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/gi,
-    (match, doubleQuoted: string, singleQuoted: string, bare: string) => {
-      const reference = doubleQuoted ?? singleQuoted ?? bare;
-      const url = resourceUrl(reference, basePath, files);
-      return url ? `url("${url}")` : match;
+  try {
+    const root = parse(css);
+    root.walkAtRules(/^charset$/i, (rule) => {
+      rule.remove();
+    });
+    root.walkAtRules(/^import$/i, (rule) => {
+      const parts = valueParser(rule.params).nodes.filter(
+        (node) => node.type !== "space" && node.type !== "comment"
+      );
+      const first = parts[0];
+      const reference =
+        first?.type === "string"
+          ? first.value
+          : first?.type === "function" && first.value.toLowerCase() === "url"
+            ? first.nodes[0]?.value
+            : undefined;
+      if (reference === undefined) {
+        throw new Error(`Invalid CSS @import: ${rule.params}`);
+      }
+      const path = resourcePath(reference, basePath);
+      if (path === undefined) {
+        return;
+      }
+      if (stack.includes(path)) {
+        throw new Error(
+          `Circular CSS @import: ${[...stack, path].join(" -> ")}`
+        );
+      }
+      if (!files[path]) {
+        throw new Error(`ZIP resource not found: ${path}`);
+      }
+      const imported = rewriteCss(
+        new TextDecoder("utf-8", { fatal: true }).decode(files[path]),
+        path.slice(0, path.lastIndexOf("/") + 1),
+        files,
+        [...stack, path],
+        budget
+      );
+      const conditions: { name: string; params: string }[] = [];
+      let offset = 1;
+      const layer = parts[offset];
+      if (
+        (layer?.type === "word" || layer?.type === "function") &&
+        layer.value.toLowerCase() === "layer"
+      ) {
+        conditions.push({
+          name: "layer",
+          params:
+            layer.type === "function" ? valueParser.stringify(layer.nodes) : "",
+        });
+        offset++;
+      }
+      const supports = parts[offset];
+      if (
+        supports?.type === "function" &&
+        supports.value.toLowerCase() === "supports"
+      ) {
+        conditions.push({
+          name: "supports",
+          params: `(${valueParser.stringify(supports.nodes)})`,
+        });
+        offset++;
+      }
+      const media = rule.params
+        .slice(parts[offset]?.sourceIndex ?? rule.params.length)
+        .trim();
+      if (media) {
+        conditions.push({ name: "media", params: media });
+      }
+      let nodes: ChildNode[] = parse(imported).nodes;
+      for (const condition of conditions.reverse()) {
+        const wrapper = atRule(condition);
+        wrapper.append(nodes);
+        nodes = [wrapper];
+      }
+      rule.replaceWith(...nodes);
+    });
+    root.walkDecls((declaration) => {
+      const value = valueParser(declaration.value);
+      value.walk((node) => {
+        if (node.type !== "function" || node.value.toLowerCase() !== "url") {
+          return;
+        }
+        const reference = node.nodes[0]?.value;
+        if (reference === undefined) {
+          return false;
+        }
+        const url = resourceUrl(reference, basePath, files);
+        if (url) {
+          budget.bytes += url.length;
+          if (budget.bytes > MAX_ARCHIVE_CONTENT_BYTES) {
+            throw new Error("Expanded CSS resources exceed 10 MiB.");
+          }
+          node.nodes = [
+            {
+              type: "string",
+              quote: '"',
+              value: url,
+              sourceIndex: 0,
+              sourceEndIndex: 0,
+            },
+          ];
+        }
+        return false;
+      });
+      declaration.value = valueParser.stringify(value.nodes);
+    });
+    return root.toString();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(`${error.message} (in ${stack.at(-1) ?? "inline CSS"})`);
     }
-  );
+    throw error;
+  }
 }
 
 function rewriteSrcset(
@@ -150,6 +263,8 @@ function inlineArchiveResources(
   const basePath = htmlPath.includes("/")
     ? htmlPath.slice(0, htmlPath.lastIndexOf("/") + 1)
     : "";
+  const inlineStyles = doc.querySelectorAll("style");
+  const cssBudget = { bytes: 0 };
 
   doc.querySelectorAll('link[rel~="stylesheet"][href]').forEach((link) => {
     if (link.hasAttribute("disabled")) {
@@ -160,16 +275,18 @@ function inlineArchiveResources(
     if (!href) {
       return;
     }
-    const url = resourceUrl(href, basePath, files);
-    if (url?.startsWith("data:")) {
-      const cssPath = decodeURIComponent(
-        new URL(href, `${archiveOrigin}${basePath}`).pathname.slice(1)
-      );
+    const cssPath = resourcePath(href, basePath);
+    if (cssPath !== undefined) {
+      if (!files[cssPath]) {
+        throw new Error(`ZIP resource not found: ${cssPath} (in ${htmlPath})`);
+      }
       const stylesheet = doc.createElement("style");
       stylesheet.textContent = rewriteCss(
         new TextDecoder("utf-8").decode(files[cssPath]),
         cssPath.slice(0, cssPath.lastIndexOf("/") + 1),
-        files
+        files,
+        [cssPath],
+        cssBudget
       );
       for (const attribute of ["media", "title"]) {
         if (link.hasAttribute(attribute)) {
@@ -183,13 +300,22 @@ function inlineArchiveResources(
     }
   });
 
-  doc.querySelectorAll("style").forEach((style) => {
-    style.textContent = rewriteCss(style.textContent ?? "", basePath, files);
+  inlineStyles.forEach((style) => {
+    style.textContent = rewriteCss(
+      style.textContent ?? "",
+      basePath,
+      files,
+      [htmlPath],
+      cssBudget
+    );
   });
   doc.querySelectorAll("[style]").forEach((element) => {
     const style = element.getAttribute("style");
     if (style) {
-      element.setAttribute("style", rewriteCss(style, basePath, files));
+      element.setAttribute(
+        "style",
+        rewriteCss(style, basePath, files, [htmlPath], cssBudget)
+      );
     }
   });
   doc
@@ -291,10 +417,11 @@ export async function readHtmlPreviewSource(
   } else {
     return undefined;
   }
-  if (
-    new TextEncoder().encode(preview.source).byteLength > MAX_HTML_PREVIEW_BYTES
-  ) {
-    throw new Error("HTML with embedded resources must be at most 1 MiB.");
+  const sourceBytes = new TextEncoder().encode(preview.source).byteLength;
+  if (sourceBytes > MAX_HTML_PREVIEW_BYTES) {
+    throw new Error(
+      `HTML with embedded resources must be at most 1 MiB (converted size: ${(sourceBytes / 1024 / 1024).toFixed(2)} MiB). Reduce image or font sizes.`
+    );
   }
   return preview;
 }
