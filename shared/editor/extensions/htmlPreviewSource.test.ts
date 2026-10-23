@@ -133,4 +133,34 @@ describe("HTML preview source", () => {
 
     expect(widgetKey(resized)).not.toBe(widgetKey(state));
   });
+  it("does not reopen source when undo restores preview dimensions", () => {
+    const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "code_fence",
+        { language: "html-preview" },
+        schema.text("<p>Preview</p>")
+      ),
+    ]);
+    const state = EditorState.create({
+      schema,
+      doc,
+      selection: TextSelection.create(doc, 1),
+      plugins: [plugin],
+    });
+    const resized = state.apply(
+      state.tr
+        .setNodeMarkup(0, undefined, {
+          ...doc.firstChild!.attrs,
+          previewWidth: 90,
+        })
+        .setMeta(plugin, null)
+    );
+    const undone = resized.apply(
+      resized.tr.setNodeMarkup(0, undefined, doc.firstChild!.attrs)
+    );
+
+    expect(plugin.getState(resized)?.editingPos).toBeNull();
+    expect(plugin.getState(undone)?.editingPos).toBeNull();
+  });
 });

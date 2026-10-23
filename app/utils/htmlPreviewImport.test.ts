@@ -64,6 +64,26 @@ describe("collection HTML preview import", () => {
     expect(result?.text).toContain("data:image/png;base64,");
     expect(result?.text).toContain("<style>");
   });
+  it("rewrites responsive ZIP images and preserves stylesheet media settings", async () => {
+    const file = await zipFile({
+      "index.html":
+        '<link rel="stylesheet" href="styles/site.css" media="print" title="Print" disabled><picture><source srcset="images/small.png 1x, images/large.png 2x"><img srcset="images/small.png 400w, images/large.png 800w"></picture>',
+      "styles/site.css": "body { color: red }",
+      "images/small.png": "small",
+      "images/large.png": "large",
+    });
+    const result = await readHtmlPreviewFile(file);
+    const doc = new DOMParser().parseFromString(result!.source, "text/html");
+
+    expect(doc.querySelector("source")?.getAttribute("srcset")).toContain(
+      "data:image/png;base64,"
+    );
+    expect(doc.querySelector("source")?.getAttribute("srcset")).toContain("2x");
+    expect(doc.querySelector("img")?.getAttribute("srcset")).toContain("800w");
+    expect(doc.querySelector("style")?.getAttribute("media")).toBe("print");
+    expect(doc.querySelector("style")?.getAttribute("title")).toBe("Print");
+    expect(doc.querySelector("style")?.hasAttribute("disabled")).toBe(true);
+  });
   it("requires exactly one HTML page in a ZIP", async () => {
     const file = await zipFile({ "one.html": "", "two.htm": "" });
     await expect(readHtmlPreviewFile(file)).rejects.toThrow(
