@@ -237,7 +237,11 @@ export function HtmlPreview(editor: Editor) {
                 );
                 const previewHeight =
                   Number(block.node.attrs.previewHeight) || 0;
-                iframe.style.cssText = `display:block;width:${previewWidth}%;max-width:100%;height:${previewHeight || 200}px;border:0;margin:0 auto;`;
+                const frame = document.createElement("div");
+                frame.className = "outline-html-preview-frame";
+                frame.style.width = `${previewWidth}%`;
+                frame.style.height = `${previewHeight || 200}px`;
+                iframe.style.cssText = "display:block;width:100%;height:100%;border:0;";
                 const diagnostics = new Set<string>();
                 addButton("Full screen", () => {
                   void iframe.requestFullscreen().catch(() => {
@@ -280,14 +284,106 @@ export function HtmlPreview(editor: Editor) {
                   ) {
                     return;
                   }
-                  iframe.style.height = `${Math.min(50000, Math.max(100, Math.ceil(event.data.height)))}px`;
+                  frame.style.height = `${Math.min(50000, Math.max(100, Math.ceil(event.data.height)))}px`;
                 };
                 window.addEventListener("message", handleMessage);
                 cleanups.set(wrapper, () =>
                   window.removeEventListener("message", handleMessage)
                 );
                 iframe.srcdoc = createHtmlPreviewSource(source, nonce, channel);
-                wrapper.append(iframe);
+                const resizeHandle = document.createElement("button");
+                resizeHandle.type = "button";
+                resizeHandle.className = "outline-html-preview-resize";
+                resizeHandle.setAttribute("aria-label", "Resize HTML preview");
+                resizeHandle.title = "Drag to resize preview";
+                const availableWidth = () => {
+                  const parent = frame.parentElement;
+                  if (!parent) {
+                    return frame.getBoundingClientRect().width;
+                  }
+                  const style = window.getComputedStyle(parent);
+                  return (
+                    parent.clientWidth -
+                    parseFloat(style.paddingLeft) -
+                    parseFloat(style.paddingRight)
+                  );
+                };
+                resizeHandle.addEventListener("keydown", (event) => {
+                  if (
+                    !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
+                      event.key
+                    )
+                  ) {
+                    return;
+                  }
+                  event.preventDefault();
+                  const containerWidth = availableWidth();
+                  const currentWidth = Math.round(
+                    (frame.getBoundingClientRect().width / containerWidth) * 100
+                  );
+                  const currentHeight = Math.round(frame.getBoundingClientRect().height);
+                  setDimensions(
+                    currentWidth +
+                      (event.key === "ArrowRight"
+                        ? 5
+                        : event.key === "ArrowLeft"
+                          ? -5
+                          : 0),
+                    currentHeight +
+                      (event.key === "ArrowDown"
+                        ? 50
+                        : event.key === "ArrowUp"
+                          ? -50
+                          : 0)
+                  );
+                });
+                resizeHandle.addEventListener("pointerdown", (event) => {
+                  event.preventDefault();
+                  resizeHandle.setPointerCapture(event.pointerId);
+                  const startX = event.clientX;
+                  const startY = event.clientY;
+                  const startWidth = frame.getBoundingClientRect().width;
+                  const startHeight = frame.getBoundingClientRect().height;
+                  const containerWidth = availableWidth();
+                  const move = (moveEvent: PointerEvent) => {
+                    if (moveEvent.pointerId !== event.pointerId) {
+                      return;
+                    }
+                    frame.style.width = `${Math.max(
+                      25,
+                      Math.min(
+                        100,
+                        ((startWidth + moveEvent.clientX - startX) /
+                          containerWidth) *
+                          100
+                      )
+                    )}%`;
+                    frame.style.height = `${Math.max(
+                      200,
+                      Math.min(2000, startHeight + moveEvent.clientY - startY)
+                    )}px`;
+                  };
+                  const finish = (endEvent: PointerEvent) => {
+                    if (endEvent.pointerId !== event.pointerId) {
+                      return;
+                    }
+                    resizeHandle.removeEventListener("pointermove", move);
+                    resizeHandle.removeEventListener("pointerup", finish);
+                    resizeHandle.removeEventListener("pointercancel", finish);
+                    setDimensions(
+                      Math.round((frame.getBoundingClientRect().width / containerWidth) * 100),
+                      Math.round(frame.getBoundingClientRect().height)
+                    );
+                  };
+                  resizeHandle.addEventListener("pointermove", move);
+                  resizeHandle.addEventListener("pointerup", finish);
+                  resizeHandle.addEventListener("pointercancel", finish);
+                });
+                frame.append(iframe);
+                if (!editor.props.readOnly) {
+                  frame.append(resizeHandle);
+                }
+                wrapper.append(frame);
               } catch (error) {
                 notice.textContent =
                   error instanceof Error

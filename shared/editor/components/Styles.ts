@@ -1810,6 +1810,42 @@ mark {
   }
 }
 
+.outline-html-preview-frame {
+  position: relative;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+.outline-html-preview-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid ${props.theme.divider};
+  border-radius: 5px 0 5px 0;
+  background: ${props.theme.backgroundSecondary};
+  cursor: nwse-resize;
+  touch-action: none;
+
+  &::after {
+    position: absolute;
+    right: 4px;
+    bottom: 4px;
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid ${props.theme.textSecondary};
+    border-bottom: 2px solid ${props.theme.textSecondary};
+    content: "";
+  }
+
+  &:focus-visible {
+    outline: 2px solid ${props.theme.selected};
+    outline-offset: 2px;
+  }
+}
+
 .outline-html-preview-toolbar {
   display: flex;
   align-items: center;
