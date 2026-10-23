@@ -63,6 +63,8 @@ export function HtmlPreview(editor: Editor) {
               toolbar.append(button);
             };
             const setDimensions = (width: number, height: number) => {
+              const editingPos =
+                previewKey.getState(view.state)?.editingPos ?? null;
               view.dispatch(
                 view.state.tr
                   .setNodeMarkup(block.pos, undefined, {
@@ -71,7 +73,7 @@ export function HtmlPreview(editor: Editor) {
                     previewHeight:
                       height === 0 ? 0 : Math.max(200, Math.min(2000, height)),
                   })
-                  .setMeta(previewKey, block.pos)
+                  .setMeta(previewKey, editingPos)
               );
             };
             if (editing && !editor.props.readOnly) {
@@ -291,11 +293,6 @@ export function HtmlPreview(editor: Editor) {
                   window.removeEventListener("message", handleMessage)
                 );
                 iframe.srcdoc = createHtmlPreviewSource(source, nonce, channel);
-                const resizeHandle = document.createElement("button");
-                resizeHandle.type = "button";
-                resizeHandle.className = "outline-html-preview-resize";
-                resizeHandle.setAttribute("aria-label", "Resize HTML preview");
-                resizeHandle.title = "Drag to resize preview";
                 const availableWidth = () => {
                   const parent = frame.parentElement;
                   if (!parent) {
@@ -308,80 +305,114 @@ export function HtmlPreview(editor: Editor) {
                     parseFloat(style.paddingRight)
                   );
                 };
-                resizeHandle.addEventListener("keydown", (event) => {
-                  if (
-                    !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(
-                      event.key
-                    )
-                  ) {
-                    return;
-                  }
-                  event.preventDefault();
-                  const containerWidth = availableWidth();
-                  const currentWidth = Math.round(
-                    (frame.getBoundingClientRect().width / containerWidth) * 100
-                  );
-                  const currentHeight = Math.round(frame.getBoundingClientRect().height);
-                  setDimensions(
-                    currentWidth +
-                      (event.key === "ArrowRight"
+                const createResizeHandle = (
+                  axis: "width" | "height" | "both"
+                ) => {
+                  const handle = document.createElement("button");
+                  handle.type = "button";
+                  handle.className = `outline-html-preview-resize outline-html-preview-resize-${axis}`;
+                  handle.setAttribute("aria-label", `Resize HTML preview ${axis}`);
+                  handle.title = "Drag to resize preview";
+                  handle.addEventListener("keydown", (event) => {
+                    const widthDelta =
+                      event.key === "ArrowRight"
                         ? 5
                         : event.key === "ArrowLeft"
                           ? -5
-                          : 0),
-                    currentHeight +
-                      (event.key === "ArrowDown"
+                          : 0;
+                    const heightDelta =
+                      event.key === "ArrowDown"
                         ? 50
                         : event.key === "ArrowUp"
                           ? -50
-                          : 0)
-                  );
-                });
-                resizeHandle.addEventListener("pointerdown", (event) => {
-                  event.preventDefault();
-                  resizeHandle.setPointerCapture(event.pointerId);
-                  const startX = event.clientX;
-                  const startY = event.clientY;
-                  const startWidth = frame.getBoundingClientRect().width;
-                  const startHeight = frame.getBoundingClientRect().height;
-                  const containerWidth = availableWidth();
-                  const move = (moveEvent: PointerEvent) => {
-                    if (moveEvent.pointerId !== event.pointerId) {
+                          : 0;
+                    if (
+                      (axis === "height" && widthDelta) ||
+                      (axis === "width" && heightDelta) ||
+                      (!widthDelta && !heightDelta)
+                    ) {
                       return;
                     }
-                    frame.style.width = `${Math.max(
-                      25,
-                      Math.min(
-                        100,
-                        ((startWidth + moveEvent.clientX - startX) /
-                          containerWidth) *
-                          100
-                      )
-                    )}%`;
-                    frame.style.height = `${Math.max(
-                      200,
-                      Math.min(2000, startHeight + moveEvent.clientY - startY)
-                    )}px`;
-                  };
-                  const finish = (endEvent: PointerEvent) => {
-                    if (endEvent.pointerId !== event.pointerId) {
-                      return;
-                    }
-                    resizeHandle.removeEventListener("pointermove", move);
-                    resizeHandle.removeEventListener("pointerup", finish);
-                    resizeHandle.removeEventListener("pointercancel", finish);
-                    setDimensions(
-                      Math.round((frame.getBoundingClientRect().width / containerWidth) * 100),
-                      Math.round(frame.getBoundingClientRect().height)
+                    event.preventDefault();
+                    const containerWidth = availableWidth();
+                    const currentWidth = Math.round(
+                      (frame.getBoundingClientRect().width / containerWidth) * 100
                     );
-                  };
-                  resizeHandle.addEventListener("pointermove", move);
-                  resizeHandle.addEventListener("pointerup", finish);
-                  resizeHandle.addEventListener("pointercancel", finish);
-                });
+                    const currentHeight = Math.round(
+                      frame.getBoundingClientRect().height
+                    );
+                    setDimensions(
+                      axis === "height"
+                        ? Number(block.node.attrs.previewWidth) || 100
+                        : currentWidth + widthDelta,
+                      axis === "width" || !heightDelta
+                        ? previewHeight
+                        : currentHeight + heightDelta
+                    );
+                  });
+                  handle.addEventListener("pointerdown", (event) => {
+                    event.preventDefault();
+                    handle.setPointerCapture(event.pointerId);
+                    const startX = event.clientX;
+                    const startY = event.clientY;
+                    const startWidth = frame.getBoundingClientRect().width;
+                    const startHeight = frame.getBoundingClientRect().height;
+                    const containerWidth = availableWidth();
+                    const move = (moveEvent: PointerEvent) => {
+                      if (moveEvent.pointerId !== event.pointerId) {
+                        return;
+                      }
+                      if (axis !== "height") {
+                        frame.style.width = `${Math.max(
+                          25,
+                          Math.min(
+                            100,
+                            ((startWidth + moveEvent.clientX - startX) /
+                              containerWidth) *
+                              100
+                          )
+                        )}%`;
+                      }
+                      if (axis !== "width") {
+                        frame.style.height = `${Math.max(
+                          200,
+                          Math.min(2000, startHeight + moveEvent.clientY - startY)
+                        )}px`;
+                      }
+                    };
+                    const finish = (endEvent: PointerEvent) => {
+                      if (endEvent.pointerId !== event.pointerId) {
+                        return;
+                      }
+                      handle.removeEventListener("pointermove", move);
+                      handle.removeEventListener("pointerup", finish);
+                      handle.removeEventListener("pointercancel", finish);
+                      setDimensions(
+                        axis === "height"
+                          ? Number(block.node.attrs.previewWidth) || 100
+                          : Math.round(
+                              (frame.getBoundingClientRect().width /
+                                containerWidth) *
+                                100
+                            ),
+                        axis === "width"
+                          ? previewHeight
+                          : Math.round(frame.getBoundingClientRect().height)
+                      );
+                    };
+                    handle.addEventListener("pointermove", move);
+                    handle.addEventListener("pointerup", finish);
+                    handle.addEventListener("pointercancel", finish);
+                  });
+                  return handle;
+                };
                 frame.append(iframe);
                 if (!editor.props.readOnly) {
-                  frame.append(resizeHandle);
+                  frame.append(
+                    createResizeHandle("width"),
+                    createResizeHandle("height"),
+                    createResizeHandle("both")
+                  );
                 }
                 wrapper.append(frame);
               } catch (error) {

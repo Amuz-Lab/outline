@@ -1818,16 +1818,44 @@ mark {
 
 .outline-html-preview-resize {
   position: absolute;
+  z-index: 1;
+  padding: 0;
+  border: 1px solid ${props.theme.divider};
+  border-radius: 5px;
+  background: ${props.theme.backgroundSecondary};
+  touch-action: none;
+
+  &:focus-visible {
+    outline: 2px solid ${props.theme.selected};
+    outline-offset: 2px;
+  }
+}
+
+.outline-html-preview-resize-width {
+  right: 0;
+  top: 50%;
+  width: 12px;
+  height: 44px;
+  transform: translate(50%, -50%);
+  cursor: ew-resize;
+}
+
+.outline-html-preview-resize-height {
+  bottom: 0;
+  left: 50%;
+  width: 44px;
+  height: 12px;
+  transform: translate(-50%, 50%);
+  cursor: ns-resize;
+}
+
+.outline-html-preview-resize-both {
   right: 0;
   bottom: 0;
   width: 20px;
   height: 20px;
-  padding: 0;
-  border: 1px solid ${props.theme.divider};
   border-radius: 5px 0 5px 0;
-  background: ${props.theme.backgroundSecondary};
   cursor: nwse-resize;
-  touch-action: none;
 
   &::after {
     position: absolute;
