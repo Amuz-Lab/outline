@@ -26,9 +26,9 @@ describe("HTML preview source", () => {
   it("adds a viewport for responsive previews and reports runtime restrictions", () => {
     const result = createHtmlPreviewSource("<p>responsive</p>", "n", "channel");
     const doc = new DOMParser().parseFromString(result, "text/html");
-    expect(doc.querySelector('meta[name="viewport"]')?.content).toBe(
-      "width=device-width, initial-scale=1"
-    );
+    expect(
+      doc.querySelector('meta[name="viewport"]')?.getAttribute("content")
+    ).toBe("width=device-width, initial-scale=1");
     expect(result).toContain("outline-html-diagnostic");
     expect(result).toContain("securitypolicyviolation");
   });
@@ -39,9 +39,9 @@ describe("HTML preview source", () => {
     );
     const doc = new DOMParser().parseFromString(result, "text/html");
     expect(doc.querySelectorAll('meta[name="viewport"]')).toHaveLength(1);
-    expect(doc.querySelector('meta[name="viewport"]')?.content).toBe(
-      "width=900"
-    );
+    expect(
+      doc.querySelector('meta[name="viewport"]')?.getAttribute("content")
+    ).toBe("width=900");
   });
   it("leaves external scripts to the frame policy and removes redirects and base elements", () => {
     const result = createHtmlPreviewSource(
