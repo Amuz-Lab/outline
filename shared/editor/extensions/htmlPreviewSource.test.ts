@@ -133,6 +133,29 @@ describe("HTML preview source", () => {
 
     expect(widgetKey(resized)).not.toBe(widgetKey(state));
   });
+  it("recreates preview widgets when editing completes", () => {
+    const props = { readOnly: false };
+    const plugin = HtmlPreview({ props } as Editor);
+    const doc = schema.node("doc", null, [
+      schema.node(
+        "code_fence",
+        { language: "html-preview" },
+        schema.text("<p>Preview</p>")
+      ),
+    ]);
+    const state = EditorState.create({ schema, doc, plugins: [plugin] });
+    const widgetKey = (current: EditorState) =>
+      plugin
+        .getState(current)!
+        .decorations.find()
+        .find((decoration) => decoration.spec.key)?.spec.key;
+    const editableKey = widgetKey(state);
+
+    props.readOnly = true;
+    const completed = state.apply(state.tr.setMeta(plugin, null));
+
+    expect(widgetKey(completed)).not.toBe(editableKey);
+  });
   it("does not reopen source when undo restores preview dimensions", () => {
     const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);
     const doc = schema.node("doc", null, [

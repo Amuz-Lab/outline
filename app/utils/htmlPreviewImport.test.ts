@@ -67,7 +67,7 @@ describe("collection HTML preview import", () => {
   it("rewrites responsive ZIP images and preserves stylesheet media settings", async () => {
     const file = await zipFile({
       "index.html":
-        '<link rel="stylesheet" href="styles/site.css" media="print" title="Print" disabled><picture><source srcset="images/small.png 1x, images/large.png 2x"><img srcset="images/small.png 400w, images/large.png 800w"></picture>',
+        '<link rel="stylesheet" href="styles/site.css" media="print" title="Print"><picture><source srcset="images/small.png 1x, images/large.png 2x"><img srcset="images/small.png 400w, images/large.png 800w"></picture>',
       "styles/site.css": "body { color: red }",
       "images/small.png": "small",
       "images/large.png": "large",
@@ -82,7 +82,22 @@ describe("collection HTML preview import", () => {
     expect(doc.querySelector("img")?.getAttribute("srcset")).toContain("800w");
     expect(doc.querySelector("style")?.getAttribute("media")).toBe("print");
     expect(doc.querySelector("style")?.getAttribute("title")).toBe("Print");
-    expect(doc.querySelector("style")?.hasAttribute("disabled")).toBe(true);
+  });
+  it("excludes disabled ZIP stylesheets from the preview", async () => {
+    const file = await zipFile({
+      "index.html":
+        '<link rel="stylesheet" href="active.css"><link rel="stylesheet" href="disabled.css" disabled><link rel="stylesheet" href="missing.css" disabled>',
+      "active.css": "body { color: green }",
+      "disabled.css": "body { color: red }",
+    });
+    const result = await readHtmlPreviewFile(file);
+    const doc = new DOMParser().parseFromString(result!.source, "text/html");
+
+    expect(doc.querySelectorAll("style")).toHaveLength(1);
+    expect(doc.querySelector("style")?.textContent).toBe(
+      "body { color: green }"
+    );
+    expect(doc.querySelector("link[disabled]")).toBeNull();
   });
   it("requires exactly one HTML page in a ZIP", async () => {
     const file = await zipFile({ "one.html": "", "two.htm": "" });

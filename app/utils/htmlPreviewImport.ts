@@ -152,6 +152,10 @@ function inlineArchiveResources(
     : "";
 
   doc.querySelectorAll('link[rel~="stylesheet"][href]').forEach((link) => {
+    if (link.hasAttribute("disabled")) {
+      link.remove();
+      return;
+    }
     const href = link.getAttribute("href");
     if (!href) {
       return;
@@ -174,9 +178,6 @@ function inlineArchiveResources(
             link.getAttribute(attribute) ?? ""
           );
         }
-      }
-      if (link.hasAttribute("disabled")) {
-        stylesheet.setAttribute("disabled", "");
       }
       link.replaceWith(stylesheet);
     }
