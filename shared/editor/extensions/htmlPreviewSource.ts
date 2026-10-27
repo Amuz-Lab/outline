@@ -9,7 +9,8 @@ export function createHtmlPreviewSource(
   source: string,
   nonce: string,
   channel?: string,
-  autoHeight = true
+  autoHeight = true,
+  previewStateKey?: string
 ): string {
   if (new TextEncoder().encode(source).byteLength > MAX_HTML_PREVIEW_BYTES) {
     throw new Error(
@@ -36,6 +37,7 @@ export function createHtmlPreviewSource(
     const bridge = doc.createElement("script");
     bridge.textContent = `(() => {
       const channel = ${JSON.stringify(channel).replace(/</g, "\\u003c")};
+      const stateKey = ${JSON.stringify(previewStateKey ?? "")};
       const sendDiagnostic = kind => parent.postMessage(
         {type: 'outline-html-diagnostic', channel, kind}, '*'
       );
@@ -65,8 +67,30 @@ export function createHtmlPreviewSource(
         }
       };
       const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(report); } };
+      let restoredTabs = false;
+      let previousTabs = '';
+      const reportTabs = () => {
+        if (!restoredTabs) return;
+        const tabs = [...document.querySelectorAll('nav [data-tab], nav [role="tab"], nav button')]
+          .filter(el => el.getAttribute('aria-selected') === 'true' || ['on', 'active', 'selected'].some(name => el.classList.contains(name)))
+          .map(el => ({ tab: el.getAttribute('data-tab'), id: el.id }))
+          .filter(item => item.tab || item.id);
+        const encoded = JSON.stringify(tabs);
+        if (encoded === previousTabs) return;
+        previousTabs = encoded;
+        parent.postMessage({type: 'outline-html-tabs', channel, stateKey, tabs}, '*');
+      };
       addEventListener('message', event => {
         if (event.source !== parent || event.data?.channel !== channel) return;
+        if (event.data.type === 'outline-html-restore-tabs' && Array.isArray(event.data.tabs)) {
+          for (const saved of event.data.tabs) {
+            const target = [...document.querySelectorAll('nav [data-tab], nav [role="tab"], nav button')]
+              .find(el => (saved.tab && el.getAttribute('data-tab') === saved.tab) || (saved.id && el.id === saved.id));
+            if (target && !target.matches('[aria-selected="true"], .on, .active, .selected')) target.click();
+          }
+          restoredTabs = true;
+          reportTabs();
+        }
         if (event.data.type === 'outline-html-layout' && typeof event.data.autoHeight === 'boolean') {
           const layout = document.querySelector('style[' + ${JSON.stringify(layoutAttribute)} + ']');
           if (layout) layout.textContent = event.data.autoHeight ? ${JSON.stringify(autoLayout)} : '';
@@ -78,7 +102,9 @@ export function createHtmlPreviewSource(
       });
       const observe = () => {
         if (document.body) new ResizeObserver(schedule).observe(document.body);
+        if (document.body) new MutationObserver(reportTabs).observe(document.body, {attributes: true, attributeFilter: ['class', 'aria-selected'], childList: true, subtree: true});
         schedule();
+        reportTabs();
       };
       if (document.readyState === 'loading') {
         addEventListener('DOMContentLoaded', observe, {once: true});

@@ -18,7 +18,24 @@ import { readHtmlPreviewSource } from "./htmlPreviewImport";
 interface PreviewState {
   editingPos: number | null;
   decorations: DecorationSet;
-  identities: Map<number, { id: string; source: string }>;
+  identities: Map<number, { id: string; source: string; stateKey: string }>;
+}
+
+type TabStateWindow = Window & {
+  __outlineHtmlPreviewTabs?: Map<string, Array<{ tab: string | null; id: string }>>;
+};
+
+const savedTabs = () => {
+  const target = window as TabStateWindow;
+  return (target.__outlineHtmlPreviewTabs ??= new Map());
+};
+
+function previewStateKey(editor: Editor, pos: number, source: string) {
+  let hash = 2166136261;
+  for (let i = 0; i < source.length; i++) {
+    hash = Math.imul(hash ^ source.charCodeAt(i), 16777619);
+  }
+  return `${editor.props.id ?? ""}:${pos}:${source.length}:${hash >>> 0}`;
 }
 
 /** Identifies the preview plugin when the editor enables editing. */
@@ -55,17 +72,26 @@ export function HtmlPreview(editor: Editor) {
   function build(
     state: EditorState,
     editingPos: number | null,
-    previous = new Map<number, { id: string; source: string }>()
+    previous = new Map<number, { id: string; source: string; stateKey: string }>()
   ): PreviewState {
     const decorations: Decoration[] = [];
-    const identities = new Map<number, { id: string; source: string }>();
+    const identities = new Map<
+      number,
+      { id: string; source: string; stateKey: string }
+    >();
     for (const block of findBlockNodes(state.doc, true).filter((b) =>
       isHtmlPreview(b.node)
     )) {
       const source = block.node.textContent;
       const oldIdentity = previous.get(block.pos);
       const identity =
-        oldIdentity?.source === source ? oldIdentity : { id: uuidv4(), source };
+        oldIdentity?.source === source
+          ? oldIdentity
+          : {
+              id: uuidv4(),
+              source,
+              stateKey: previewStateKey(editor, block.pos, source),
+            };
       identities.set(block.pos, identity);
       const frameKey = `html-preview-frame-${identity.id}`;
       const mountedToolbar = toolbars.get(frameKey);
@@ -415,6 +441,41 @@ export function HtmlPreview(editor: Editor) {
                     return;
                   }
                   if (
+                    event.data.type === "outline-html-tabs" &&
+                    event.data.stateKey === identity.stateKey &&
+                    Array.isArray(event.data.tabs)
+                  ) {
+                    const tabs = event.data.tabs
+                      .slice(0, 32)
+                      .flatMap((tab: unknown) => {
+                        if (!tab || typeof tab !== "object") {
+                          return [];
+                        }
+                        const value = tab as {
+                          tab?: unknown;
+                          id?: unknown;
+                        };
+                        const dataTab =
+                          typeof value.tab === "string" && value.tab.length <= 128
+                            ? value.tab
+                            : null;
+                        const id =
+                          typeof value.id === "string" && value.id.length <= 128
+                            ? value.id
+                            : "";
+                        return dataTab || id ? [{ tab: dataTab, id }] : [];
+                      });
+                    const tabsByPreview = savedTabs();
+                    tabsByPreview.set(identity.stateKey, tabs);
+                    if (tabsByPreview.size > 100) {
+                      const oldestKey = tabsByPreview.keys().next().value;
+                      if (oldestKey) {
+                        tabsByPreview.delete(oldestKey);
+                      }
+                    }
+                    return;
+                  }
+                  if (
                     event.data.type !== "outline-html-height" ||
                     previewHeight !== 0 ||
                     resizing ||
@@ -426,6 +487,16 @@ export function HtmlPreview(editor: Editor) {
                   frame.style.height = `${Math.min(MAX_HTML_PREVIEW_HEIGHT, Math.max(100, Math.ceil(event.data.height)))}px`;
                 };
                 window.addEventListener("message", handleMessage);
+                iframe.addEventListener("load", () =>
+                  iframe.contentWindow?.postMessage(
+                    {
+                      type: "outline-html-restore-tabs",
+                      channel,
+                      tabs: savedTabs().get(identity.stateKey) ?? [],
+                    },
+                    "*"
+                  )
+                );
                 cleanups.set(wrapper, () => {
                   cancelResize?.();
                   window.removeEventListener("message", handleMessage);
@@ -434,7 +505,8 @@ export function HtmlPreview(editor: Editor) {
                   source,
                   nonce,
                   channel,
-                  previewHeight === 0
+                  previewHeight === 0,
+                  identity.stateKey
                 );
                 const availableWidth = () => {
                   const parent = frame.parentElement;
@@ -726,7 +798,10 @@ export function HtmlPreview(editor: Editor) {
           editingPos = null;
         }
         if (tr.docChanged || meta !== undefined) {
-          const mapped = new Map<number, { id: string; source: string }>();
+          const mapped = new Map<
+            number,
+            { id: string; source: string; stateKey: string }
+          >();
           for (const [pos, identity] of previous.identities) {
             const nextPos = tr.mapping.map(pos, 1);
             const nextNode = state.doc.nodeAt(nextPos);
