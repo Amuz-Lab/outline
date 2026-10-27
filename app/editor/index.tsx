@@ -79,6 +79,13 @@ import Lightbox from "~/components/Lightbox";
 import { anchorPlugin } from "@shared/editor/plugins/AnchorPlugin";
 import { toastNotice } from "./toastNotice";
 
+const htmlPreviewPluginKeyName = (
+  htmlPreviewPluginKey as unknown as { key: string }
+).key;
+const hasHtmlPreviewPluginKey = (plugin: Plugin) =>
+  (plugin.spec.key as unknown as { key?: string } | undefined)?.key ===
+  htmlPreviewPluginKeyName;
+
 export type Props = {
   /** An optional identifier for the editor context. It is used to persist local settings */
   id?: string;
@@ -343,7 +350,7 @@ export class Editor extends React.PureComponent<
         return !hasHtmlPreview;
       });
       const previewPlugin = this.view.state.plugins.find(
-        (plugin) => plugin.spec.key === htmlPreviewPluginKey
+        hasHtmlPreviewPluginKey
       );
       if (hasHtmlPreview && previewPlugin) {
         this.enableEditingWithPreview(previewPlugin);
@@ -570,7 +577,7 @@ export class Editor extends React.PureComponent<
     this.nodes = this.createNodes();
     this.marks = this.createMarks();
     this.plugins = this.createPlugins().map((plugin) =>
-      plugin.spec.key === htmlPreviewPluginKey ? previewPlugin : plugin
+      hasHtmlPreviewPluginKey(plugin) ? previewPlugin : plugin
     );
     this.rulePlugins = this.createRulePlugins();
     this.cachedSerializer = undefined;
