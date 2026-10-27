@@ -256,6 +256,78 @@ try {
   assert.deepEqual(errors, []);
   await reset({ width: 80, height: 480 });
   await mkdir(path.join(root, "build"), { recursive: true });
+  await reset({
+    source:
+      '<!doctype html><style>html,body{margin:0}body{display:flex;flex-direction:row}.column{flex:1;min-width:0}</style><main class="column">Left</main><aside class="column">Right</aside>',
+  });
+  await page.frameLocator("iframe").locator(".column").first().waitFor();
+  const horizontalColumns = await page
+    .frameLocator("iframe")
+    .locator(".column")
+    .evaluateAll((elements) => elements.map((element) => element.clientWidth));
+  const viewportWidth = await page
+    .frameLocator("iframe")
+    .locator("body")
+    .evaluate((element) => element.clientWidth);
+  assert.ok(horizontalColumns.every((width) => width > viewportWidth * 0.35));
+  assert.ok(Math.abs(horizontalColumns[0] - horizontalColumns[1]) < 2);
+
+  const delayedTabs = `<!doctype html><body><script>
+    const nav = document.createElement("nav");
+    document.body.append(nav);
+    const addTab = (id, label) => {
+      const button = document.createElement("button");
+      button.dataset.tab = id;
+      button.textContent = label;
+      if (id === "data") button.classList.add("on");
+      button.onclick = () => {
+        nav.querySelectorAll("button").forEach((item) => item.classList.remove("on"));
+        button.classList.add("on");
+      };
+      nav.append(button);
+    };
+    setTimeout(() => addTab("data", "Data"), 100);
+    setTimeout(() => addTab("settings", "Settings"), 300);
+  </script>`;
+  await reset({ source: delayedTabs });
+  await page.frameLocator("iframe").locator('nav [data-tab="settings"]').waitFor();
+  await page.frameLocator("iframe").locator('nav [data-tab="settings"]').click();
+  let delayedFrame = page.frames().find((candidate) => candidate !== page.mainFrame());
+  await delayedFrame.waitForFunction(() =>
+    document.querySelector('[data-tab="settings"]').classList.contains("on")
+  );
+  await reset({ source: delayedTabs });
+  delayedFrame = page.frames().find((candidate) => candidate !== page.mainFrame());
+  await delayedFrame.waitForFunction(() =>
+    document.querySelector('[data-tab="settings"]')?.classList.contains("on")
+  );
+  await delayedFrame.locator('[data-tab="data"]').click();
+  await delayedFrame.waitForTimeout(100);
+  assert.equal(
+    await delayedFrame
+      .locator('[data-tab="data"]')
+      .evaluate((element) => element.classList.contains("on")),
+    true,
+    "Tab restore observer should not override a later user selection"
+  );
+  await delayedFrame.locator('[data-tab="settings"]').click();
+  await delayedFrame.waitForFunction(() =>
+    document.querySelector('[data-tab="settings"]')?.classList.contains("on")
+  );
+  await reset({ source: delayedTabs });
+  delayedFrame = page.frames().find((candidate) => candidate !== page.mainFrame());
+  await delayedFrame.locator('[data-tab="data"]').waitFor();
+  await delayedFrame.locator('[data-tab="data"]').click();
+  await delayedFrame.locator('[data-tab="settings"]').waitFor();
+  await delayedFrame.waitForTimeout(100);
+  assert.equal(
+    await delayedFrame
+      .locator('[data-tab="data"]')
+      .evaluate((element) => element.classList.contains("on")),
+    true,
+    "A pending restore should not override a user selection before the saved tab loads"
+  );
+
   for (const css of [
     "html,body{height:100%;margin:0}",
     "body{min-height:100vh}",
@@ -438,6 +510,21 @@ try {
         .locator("section.right")
         .evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
     );
+    for (const [id, label] of [
+      ["t-data", "1. 데이터셋"],
+      ["t-set", "2. 학습 설정"],
+      ["t-prog", "3. 진행 현황"],
+      ["t-res", "4. 결과"],
+    ]) {
+      const tab = page.frameLocator("iframe").locator(`[data-tab="${id}"]`);
+      await tab.click();
+      await page.waitForTimeout(100);
+      assert.equal(
+        await tab.evaluate((element) => element.classList.contains("on")),
+        true,
+        `${label} should stay selected after clicking`
+      );
+    }
     console.log(
       "PASS: uploaded HTML settings tab preserved through resizing, finish/edit, automatic layout changes and document edits"
     );

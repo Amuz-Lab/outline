@@ -19,7 +19,7 @@ export function createHtmlPreviewSource(
   }
   const doc = new DOMParser().parseFromString(source, "text/html");
   const autoLayout =
-    "html, body { height: auto !important; min-height: 0 !important; max-height: none !important; overflow-y: visible !important; } body > * { flex: 0 0 auto !important; }";
+    "html, body { height: auto !important; min-height: 0 !important; max-height: none !important; overflow-y: visible !important; }";
   const layoutAttribute = "data-preview-layout-" + uuidv4();
   const layout = doc.createElement("style");
   layout.setAttribute(layoutAttribute, "");
@@ -49,7 +49,16 @@ export function createHtmlPreviewSource(
       addEventListener('securitypolicyviolation', () => {
         sendDiagnostic('blocked-resource');
       });
-      let previous = 0, pending = false;
+      let previous = 0, pending = false, autoHeight = ${autoHeight};
+      const layout = document.querySelector('style[' + ${JSON.stringify(layoutAttribute)} + ']');
+      const updateLayout = () => {
+        if (!layout || !document.body) return;
+        const bodyStyle = getComputedStyle(document.body);
+        const columnFlex = bodyStyle.display === 'flex' && bodyStyle.flexDirection.startsWith('column');
+        layout.textContent = autoHeight
+          ? ${JSON.stringify(autoLayout)} + (columnFlex ? ' body > * { flex: 0 0 auto !important; }' : '')
+          : '';
+      };
       const report = () => {
         pending = false;
         const body = document.body;
@@ -68,11 +77,46 @@ export function createHtmlPreviewSource(
       };
       const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(report); } };
       let restoredTabs = false;
+      let restorePending = false;
+      let savedTabs = [];
       let previousTabs = '';
+      const restoreTabs = () => {
+        if (!restorePending) return;
+        let complete = true;
+        for (const saved of savedTabs) {
+          const target = [...document.querySelectorAll('nav [data-tab], nav [role="tab"], nav button')]
+            .find(el =>
+              (saved.tab && el.getAttribute('data-tab') === saved.tab) ||
+              (saved.id && el.id === saved.id)
+            );
+          if (!target) {
+            complete = false;
+            continue;
+          }
+          if (target && !target.matches('[aria-selected="true"], .on, .active, .selected')) {
+            target.click();
+          }
+        }
+        if (complete) {
+          restorePending = false;
+          restoredTabs = true;
+          reportTabs();
+        }
+      };
+      document.addEventListener('click', event => {
+        if (!restorePending || !event.isTrusted || !(event.target instanceof Element)) return;
+        if (!event.target.closest('nav [data-tab], nav [role="tab"], nav button')) return;
+        restorePending = false;
+        restoredTabs = true;
+        reportTabs();
+      }, true);
       const reportTabs = () => {
         if (!restoredTabs) return;
         const tabs = [...document.querySelectorAll('nav [data-tab], nav [role="tab"], nav button')]
-          .filter(el => el.getAttribute('aria-selected') === 'true' || ['on', 'active', 'selected'].some(name => el.classList.contains(name)))
+          .filter(el =>
+            el.getAttribute('aria-selected') === 'true' ||
+            ['on', 'active', 'selected'].some(name => el.classList.contains(name))
+          )
           .map(el => ({ tab: el.getAttribute('data-tab'), id: el.id }))
           .filter(item => item.tab || item.id);
         const encoded = JSON.stringify(tabs);
@@ -83,17 +127,14 @@ export function createHtmlPreviewSource(
       addEventListener('message', event => {
         if (event.source !== parent || event.data?.channel !== channel) return;
         if (event.data.type === 'outline-html-restore-tabs' && Array.isArray(event.data.tabs)) {
-          for (const saved of event.data.tabs) {
-            const target = [...document.querySelectorAll('nav [data-tab], nav [role="tab"], nav button')]
-              .find(el => (saved.tab && el.getAttribute('data-tab') === saved.tab) || (saved.id && el.id === saved.id));
-            if (target && !target.matches('[aria-selected="true"], .on, .active, .selected')) target.click();
-          }
-          restoredTabs = true;
+          savedTabs = event.data.tabs;
+          restorePending = true;
+          restoreTabs();
           reportTabs();
         }
         if (event.data.type === 'outline-html-layout' && typeof event.data.autoHeight === 'boolean') {
-          const layout = document.querySelector('style[' + ${JSON.stringify(layoutAttribute)} + ']');
-          if (layout) layout.textContent = event.data.autoHeight ? ${JSON.stringify(autoLayout)} : '';
+          autoHeight = event.data.autoHeight;
+          updateLayout();
         }
         if (event.data.type === 'outline-html-measure' || event.data.type === 'outline-html-layout') {
           previous = 0;
@@ -101,8 +142,20 @@ export function createHtmlPreviewSource(
         }
       });
       const observe = () => {
+        updateLayout();
         if (document.body) new ResizeObserver(schedule).observe(document.body);
-        if (document.body) new MutationObserver(reportTabs).observe(document.body, {attributes: true, attributeFilter: ['class', 'aria-selected'], childList: true, subtree: true});
+        if (document.body) {
+          new MutationObserver(() => {
+            updateLayout();
+            restoreTabs();
+            reportTabs();
+          }).observe(document.body, {
+            attributes: true,
+            attributeFilter: ['class', 'aria-selected', 'style'],
+            childList: true,
+            subtree: true,
+          });
+        }
         schedule();
         reportTabs();
       };
@@ -111,7 +164,10 @@ export function createHtmlPreviewSource(
       } else {
         observe();
       }
-      addEventListener('load', schedule);
+      addEventListener('load', () => {
+        updateLayout();
+        schedule();
+      });
       addEventListener('resize', schedule);
       document.fonts?.ready.then(schedule);
     })();`;
