@@ -16,6 +16,7 @@ declare global {
     previewTest: {
       reset: (options?: PreviewOptions) => void;
       dimensions: () => { width: number; height: number };
+      prepend: () => void;
     };
   }
 }
@@ -24,6 +25,7 @@ const schema = new Schema({
   nodes: {
     doc: { content: "block+" },
     text: { group: "inline" },
+    paragraph: { group: "block", content: "text*", toDOM: () => ["p", 0] },
     code_fence: {
       group: "block",
       content: "text*",
@@ -71,6 +73,17 @@ window.previewTest = {
       width: view.state.doc.firstChild?.attrs.previewWidth,
       height: view.state.doc.firstChild?.attrs.previewHeight,
     };
+  },
+  prepend() {
+    view.dispatch(
+      view.state.tr.insert(
+        0,
+        schema.nodes.paragraph.create(
+          null,
+          schema.text("Other document content")
+        )
+      )
+    );
   },
 };
 document.querySelector("#edit")?.addEventListener("click", () => {

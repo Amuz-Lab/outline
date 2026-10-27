@@ -266,11 +266,13 @@ try {
     await page.waitForFunction(
       () => document.querySelector("iframe")?.contentWindow !== null
     );
-    await page.waitForTimeout(200);
+    await page.waitForFunction(
+      () => document.querySelector("iframe")?.clientHeight < 600
+    );
     const before = await frame.evaluate((element) => element.clientHeight);
     assert.ok(
-      before >= 600,
-      "Viewport-based pages need a usable initial viewport"
+      before < 600,
+      "Automatic height should follow content rather than the initial viewport"
     );
     await page.waitForTimeout(700);
     assert.equal(
@@ -279,8 +281,44 @@ try {
       `Unstable viewport height: ${css}`
     );
   }
-  if (process.argv[2]) {
-    await reset({ source: await readFile(process.argv[2], "utf8") });
+  const scrollLayout =
+    '<!doctype html><style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column}header{flex:none;height:80px}main{flex:1;min-height:0;overflow-y:auto}</style><header>Header</header><main><div style="height:1800px">Scrollable app content</div></main>';
+  await reset({ source: scrollLayout });
+  await page
+    .frameLocator("iframe")
+    .getByText("Scrollable app content")
+    .waitFor();
+  await page.waitForTimeout(300);
+  assert.ok((await frame.evaluate((element) => element.clientHeight)) >= 1880);
+  assert.ok(
+    await page
+      .frameLocator("iframe")
+      .locator("main")
+      .evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
+  );
+  const expanded = await frame.evaluate((element) => element.clientHeight);
+  await page.waitForTimeout(700);
+  assert.equal(
+    await frame.evaluate((element) => element.clientHeight),
+    expanded
+  );
+  await reset({ source: scrollLayout, height: 480 });
+  await page
+    .frameLocator("iframe")
+    .getByText("Scrollable app content")
+    .waitFor();
+  assert.equal(await frame.evaluate((element) => element.clientHeight), 480);
+  assert.ok(
+    await page
+      .frameLocator("iframe")
+      .locator("main")
+      .evaluate((element) => element.scrollHeight > element.clientHeight)
+  );
+  {
+    const fixture = process.argv[2]
+      ? await readFile(process.argv[2], "utf8")
+      : `<!doctype html><style>html,body{height:100%;margin:0}body{display:flex;flex-direction:column}.right{flex:1;min-height:0;overflow:auto}</style><nav><button class="on" data-tab="t-data">Data</button><button data-tab="t-set">Settings</button></nav><section class="right"><div style="height:1000px">Content</div></section><script>document.querySelectorAll('nav button').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(node=>node.classList.remove('on'));button.classList.add('on')}));</script>`;
+    await reset({ source: fixture });
     await page.waitForTimeout(500);
     const before = await frame.evaluate((element) => element.clientHeight);
     await page.waitForTimeout(1200);
@@ -289,7 +327,120 @@ try {
       before,
       "Uploaded HTML height did not stabilize"
     );
+    assert.ok(
+      await page
+        .frameLocator("iframe")
+        .locator("section.right")
+        .evaluate(
+          (element) => element.scrollHeight <= element.clientHeight + 1
+        ),
+      "Uploaded HTML still has a main internal scrollbar"
+    );
     console.log(`PASS: uploaded HTML stable at ${before}px`);
+    const child = page
+      .frames()
+      .find((candidate) => candidate !== page.mainFrame());
+    assert.ok(child);
+    await page.frameLocator("iframe").locator('nav [data-tab="t-set"]').click();
+    await page.waitForTimeout(400);
+    const settingsHeight = await frame.evaluate(
+      (element) => element.clientHeight
+    );
+    console.log(
+      `Auto height on tab change: dataset=${before}px, settings=${settingsHeight}px`
+    );
+    if (process.argv[2]) {
+      assert.ok(
+        settingsHeight > before + 100,
+        "Settings tab should expand the preview"
+      );
+      await page
+        .frameLocator("iframe")
+        .locator('nav [data-tab="t-data"]')
+        .click();
+      await page.waitForFunction(
+        (height) =>
+          document.querySelector("iframe").clientHeight < height - 100,
+        settingsHeight
+      );
+      await page
+        .frameLocator("iframe")
+        .locator('nav [data-tab="t-set"]')
+        .click();
+      await page.waitForFunction(
+        (height) =>
+          document.querySelector("iframe").clientHeight > height + 100,
+        before
+      );
+    }
+    assert.ok(
+      await page
+        .frameLocator("iframe")
+        .locator("section.right")
+        .evaluate(
+          (element) => element.scrollHeight <= element.clientHeight + 1
+        ),
+      "Settings tab still has a main scrollbar"
+    );
+    assert.ok(
+      await child.evaluate(() => document.body.scrollHeight <= innerHeight + 1),
+      "Preview did not expand for the selected tab"
+    );
+    const assertSettingsTab = async () =>
+      assert.equal(
+        await child.evaluate(() =>
+          document
+            .querySelector('nav [data-tab="t-set"]')
+            .classList.contains("on")
+        ),
+        true,
+        "Selected HTML tab reset"
+      );
+    await assertSettingsTab();
+    await page.evaluate(() => {
+      window.savedFrameElement = document.querySelector("iframe");
+    });
+    await startDrag("width", -20, 0);
+    await page.mouse.up();
+    assert.equal(
+      await page.evaluate(
+        () => window.savedFrameElement === document.querySelector("iframe")
+      ),
+      true
+    );
+    await assertSettingsTab();
+    await startDrag("height", 0, 80);
+    await page.mouse.up();
+    await assertSettingsTab();
+    await page.locator("#done").click();
+    await page.waitForFunction(
+      () => !document.querySelector(".outline-html-preview-resize")
+    );
+    await assertSettingsTab();
+    await page.locator("#edit").click();
+    await handle("width").waitFor();
+    await page
+      .getByRole("button", { name: "Auto height", exact: true })
+      .click();
+    await assertSettingsTab();
+    await page.evaluate(() => window.previewTest.prepend());
+    await assertSettingsTab();
+    await startDrag("width", -20, 0);
+    await page.mouse.up();
+    await assertSettingsTab();
+    await page.getByRole("button", { name: "Source", exact: true }).click();
+    await page.getByRole("button", { name: "Preview", exact: true }).click();
+    await assertSettingsTab();
+    await page.waitForTimeout(300);
+    assert.ok(
+      await page
+        .frameLocator("iframe")
+        .locator("section.right")
+        .evaluate((element) => element.scrollHeight <= element.clientHeight + 1)
+    );
+    console.log(
+      "PASS: uploaded HTML settings tab preserved through resizing, finish/edit, automatic layout changes and document edits"
+    );
   }
   await page.screenshot({
     path: path.join(root, "build/html-preview-browser.png"),

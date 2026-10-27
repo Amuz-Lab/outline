@@ -1816,6 +1816,21 @@ mark {
   margin: 0 auto;
 }
 
+.outline-html-preview-toolbar-panel {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.outline-html-preview-content {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
 .outline-html-preview-resize {
   position: absolute;
   z-index: 1;

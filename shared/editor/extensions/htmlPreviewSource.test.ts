@@ -123,7 +123,7 @@ describe("HTML preview source", () => {
     expect(restored?.attrs.previewWidth).toBe(75);
     expect(restored?.attrs.previewHeight).toBe(6500);
   });
-  it("recreates preview controls when saved dimensions change", () => {
+  it("retains the preview widget when saved dimensions change", () => {
     const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);
     const doc = schema.node("doc", null, [
       schema.node(
@@ -153,9 +153,9 @@ describe("HTML preview source", () => {
       })
     );
 
-    expect(widgetKey(resized)).not.toBe(widgetKey(state));
+    expect(widgetKey(resized)).toBe(widgetKey(state));
   });
-  it("recreates preview widgets when editing completes", () => {
+  it("retains preview widgets when editing completes", () => {
     const props = { readOnly: false };
     const plugin = HtmlPreview({ props } as Editor);
     const doc = schema.node("doc", null, [
@@ -176,7 +176,7 @@ describe("HTML preview source", () => {
     props.readOnly = true;
     const completed = state.apply(state.tr.setMeta(plugin, null));
 
-    expect(widgetKey(completed)).not.toBe(editableKey);
+    expect(widgetKey(completed)).toBe(editableKey);
   });
   it("does not reopen source when undo restores preview dimensions", () => {
     const plugin = HtmlPreview({ props: { readOnly: false } } as Editor);

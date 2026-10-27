@@ -8,7 +8,8 @@ export const MAX_HTML_PREVIEW_HEIGHT = 50000;
 export function createHtmlPreviewSource(
   source: string,
   nonce: string,
-  channel?: string
+  channel?: string,
+  autoHeight = true
 ): string {
   if (new TextEncoder().encode(source).byteLength > MAX_HTML_PREVIEW_BYTES) {
     throw new Error(
@@ -16,6 +17,14 @@ export function createHtmlPreviewSource(
     );
   }
   const doc = new DOMParser().parseFromString(source, "text/html");
+  const autoLayout =
+    "html, body { height: auto !important; min-height: 0 !important; max-height: none !important; overflow-y: visible !important; }";
+  const layoutAttribute = "data-preview-layout-" + uuidv4();
+  const layout = doc.createElement("style");
+  layout.setAttribute(layoutAttribute, "");
+  // Only the isolated preview receives this layout; stored/downloaded HTML is untouched.
+  layout.textContent = autoHeight ? autoLayout : "";
+  doc.head.append(layout);
   if (!doc.head.querySelector('meta[name="viewport" i]')) {
     const viewport = doc.createElement("meta");
     viewport.name = "viewport";
@@ -57,7 +66,12 @@ export function createHtmlPreviewSource(
       };
       const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(report); } };
       addEventListener('message', event => {
-        if (event.source === parent && event.data?.channel === channel && event.data.type === 'outline-html-measure') {
+        if (event.source !== parent || event.data?.channel !== channel) return;
+        if (event.data.type === 'outline-html-layout' && typeof event.data.autoHeight === 'boolean') {
+          const layout = document.querySelector('style[' + ${JSON.stringify(layoutAttribute)} + ']');
+          if (layout) layout.textContent = event.data.autoHeight ? ${JSON.stringify(autoLayout)} : '';
+        }
+        if (event.data.type === 'outline-html-measure' || event.data.type === 'outline-html-layout') {
           previous = 0;
           schedule();
         }
