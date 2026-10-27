@@ -56,6 +56,7 @@ import type {
 } from "@shared/types";
 import { HeadingPrefixStyle } from "@shared/types";
 import { headingPrefixPluginKey } from "@shared/editor/extensions/HeadingPrefix";
+import { htmlPreviewPluginKey } from "@shared/editor/extensions/HtmlPreview";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import EventEmitter from "@shared/utils/events";
 import { getDataTransferFiles } from "@shared/utils/files";
@@ -334,11 +335,25 @@ export class Editor extends React.PureComponent<
     // When transitioning from readOnly to editable, reinitialize to create
     // editing extensions, keymaps, input rules, and commands that were skipped.
     if (prevProps.readOnly && !this.props.readOnly) {
-      const docJSON = this.view.state.doc.toJSON();
-      this.view.destroy();
-      this.init();
-      const newState = this.createState(docJSON);
-      this.view.updateState(newState);
+      let hasHtmlPreview = false;
+      this.view.state.doc.descendants((node) => {
+        if (node.attrs.language === "html-preview") {
+          hasHtmlPreview = true;
+        }
+        return !hasHtmlPreview;
+      });
+      const previewPlugin = this.view.state.plugins.find(
+        (plugin) => plugin.spec.key === htmlPreviewPluginKey
+      );
+      if (hasHtmlPreview && previewPlugin) {
+        this.enableEditingWithPreview(previewPlugin);
+      } else {
+        const docJSON = this.view.state.doc.toJSON();
+        this.view.destroy();
+        this.init();
+        const newState = this.createState(docJSON);
+        this.view.updateState(newState);
+      }
     } else if (!prevProps.readOnly && this.props.readOnly) {
       // pass readOnly changes through to underlying editor instance
       this.view.update({
@@ -520,33 +535,62 @@ export class Editor extends React.PureComponent<
   private createState(value?: string | ProsemirrorData | ProsemirrorNode) {
     const doc = this.createDocument(value || this.props.defaultValue);
 
-    if (this.props.readOnly) {
-      return EditorState.create({
-        schema: this.schema,
-        doc,
-        plugins: [...this.plugins, anchorPlugin()],
-      });
-    }
-
     return EditorState.create({
       schema: this.schema,
       doc,
-      plugins: [
-        ...this.plugins,
-        ...this.keymaps,
-        anchorPlugin(),
-        dropCursor({
-          color: this.props.theme.accent,
-          width: 2,
-          class: EditorStyleHelper.dropCursor,
-        }),
-        gapCursor(),
-        inputRules({
-          rules: this.inputRules,
-        }),
-        keymap(baseKeymap),
-      ],
+      plugins: this.createStatePlugins(),
     });
+  }
+
+  private createStatePlugins() {
+    if (this.props.readOnly) {
+      return [...this.plugins, anchorPlugin()];
+    }
+
+    return [
+      ...this.plugins,
+      ...this.keymaps,
+      anchorPlugin(),
+      dropCursor({
+        color: this.props.theme.accent,
+        width: 2,
+        class: EditorStyleHelper.dropCursor,
+      }),
+      gapCursor(),
+      inputRules({
+        rules: this.inputRules,
+      }),
+      keymap(baseKeymap),
+    ];
+  }
+
+  private enableEditingWithPreview(previewPlugin: Plugin) {
+    // Reconfigure the existing view so the sandboxed iframe keeps its live state.
+    this.extensions = this.createExtensions();
+    this.nodes = this.createNodes();
+    this.marks = this.createMarks();
+    this.plugins = this.createPlugins().map((plugin) =>
+      plugin.spec.key === htmlPreviewPluginKey ? previewPlugin : plugin
+    );
+    this.rulePlugins = this.createRulePlugins();
+    this.cachedSerializer = undefined;
+    this.cachedParser = undefined;
+    this.cachedPasteParser = undefined;
+    this.widgets = this.createWidgets();
+    this.keymaps = this.createKeymaps();
+    this.inputRules = this.createInputRules();
+    this.view.setProps({
+      editable: () => !this.props.readOnly,
+      attributes: { translate: "no" },
+    });
+    this.view.updateState(
+      this.view.state.reconfigure({ plugins: this.createStatePlugins() })
+    );
+    this.commands = this.createCommands();
+    this.selectionToolbarMenus = this.extensions.selectionToolbarMenus;
+    Array.from(this.nodeRenderers).forEach((view) =>
+      view.setProp("isEditable", true)
+    );
   }
 
   private createDocument(content: string | object | ProsemirrorNode) {

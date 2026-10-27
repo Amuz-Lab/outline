@@ -21,7 +21,9 @@ interface PreviewState {
   identities: Map<number, { id: string; source: string }>;
 }
 
-const previewKey = new PluginKey<PreviewState>("html-preview");
+/** Identifies the preview plugin when the editor enables editing. */
+export const htmlPreviewPluginKey = new PluginKey<PreviewState>("html-preview");
+const previewKey = htmlPreviewPluginKey;
 const isHtmlPreview = (node: ProsemirrorNode) =>
   (node.type.name === "code_fence" || node.type.name === "code_block") &&
   node.attrs.language === "html-preview";
