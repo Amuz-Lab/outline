@@ -56,7 +56,7 @@ import type {
 } from "@shared/types";
 import { HeadingPrefixStyle } from "@shared/types";
 import { headingPrefixPluginKey } from "@shared/editor/extensions/HeadingPrefix";
-import { htmlPreviewPluginKey } from "@shared/editor/extensions/HtmlPreview";
+import { htmlPreviewPluginKeyPrefix } from "@shared/editor/extensions/HtmlPreview";
 import { ProsemirrorHelper } from "@shared/utils/ProsemirrorHelper";
 import EventEmitter from "@shared/utils/events";
 import { getDataTransferFiles } from "@shared/utils/files";
@@ -79,12 +79,10 @@ import Lightbox from "~/components/Lightbox";
 import { anchorPlugin } from "@shared/editor/plugins/AnchorPlugin";
 import { toastNotice } from "./toastNotice";
 
-const htmlPreviewPluginKeyName = (
-  htmlPreviewPluginKey as unknown as { key: string }
-).key;
 const hasHtmlPreviewPluginKey = (plugin: Plugin) =>
-  (plugin.spec.key as unknown as { key?: string } | undefined)?.key ===
-  htmlPreviewPluginKeyName;
+  (plugin.spec.key as unknown as { key?: string } | undefined)?.key?.startsWith(
+    htmlPreviewPluginKeyPrefix
+  ) === true;
 
 export type Props = {
   /** An optional identifier for the editor context. It is used to persist local settings */

@@ -18,7 +18,7 @@ export function createHtmlPreviewSource(
   }
   const doc = new DOMParser().parseFromString(source, "text/html");
   const autoLayout =
-    "html, body { height: auto !important; min-height: 0 !important; max-height: none !important; overflow-y: visible !important; }";
+    "html, body { height: auto !important; min-height: 0 !important; max-height: none !important; overflow-y: visible !important; } body > * { flex: 0 0 auto !important; }";
   const layoutAttribute = "data-preview-layout-" + uuidv4();
   const layout = doc.createElement("style");
   layout.setAttribute(layoutAttribute, "");
