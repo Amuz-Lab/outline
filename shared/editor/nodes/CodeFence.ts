@@ -156,7 +156,7 @@ function findTallBlocks(doc: ProsemirrorNode): Set<number> {
   const maxLines =
     (window.innerHeight * COLLAPSE_HEIGHT_RATIO) / CODE_LINE_HEIGHT;
   for (const block of findBlockNodes(doc, true)) {
-    if (isCode(block.node)) {
+    if (isCode(block.node) && block.node.attrs.language !== "html-preview") {
       const lines = (block.node.textContent.match(/\n/g)?.length ?? 0) + 1;
       if (lines > maxLines) {
         tall.add(block.pos);

@@ -45,7 +45,11 @@ export function createHtmlPreviewSource(
         if (!body) return;
         const style = getComputedStyle(body);
         const margin = (parseFloat(style.marginTop) || 0) + (parseFloat(style.marginBottom) || 0);
-        const height = Math.ceil(Math.max(body.scrollHeight, body.offsetHeight) + margin + 2);
+        // Viewport-sized roots must not feed margins or a safety pixel back into their own height.
+        const fillsViewport = Math.abs(parseFloat(style.height) - innerHeight) <= 1;
+        const height = fillsViewport && body.scrollHeight <= body.clientHeight + 1
+          ? innerHeight
+          : Math.ceil(Math.max(body.scrollHeight, body.offsetHeight) + margin);
         if (height !== previous) {
           previous = height;
           parent.postMessage({type: 'outline-html-height', channel, height}, '*');

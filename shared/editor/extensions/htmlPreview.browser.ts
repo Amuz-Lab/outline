@@ -6,6 +6,7 @@ import type { Editor } from "../../../app/editor";
 import { HtmlPreview } from "./HtmlPreview";
 
 interface PreviewOptions {
+  source?: string;
   width?: number;
   height?: number;
 }
@@ -51,7 +52,7 @@ function createView(options: PreviewOptions) {
             previewWidth: options.width ?? 100,
             previewHeight: options.height ?? 0,
           },
-          schema.text(source)
+          schema.text(options.source ?? source)
         ),
       ]),
     }),

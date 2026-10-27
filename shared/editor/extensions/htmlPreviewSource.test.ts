@@ -6,8 +6,30 @@ import { HtmlPreview } from "./HtmlPreview";
 import { EditorState, TextSelection } from "prosemirror-state";
 import type { Editor } from "../../../app/editor";
 import { schema, parser, serializer } from "../../test/editor";
+import CodeFence from "../nodes/CodeFence";
 
 describe("HTML preview source", () => {
+  it("excludes HTML previews from code collapse while retaining ordinary code folding", () => {
+    const extension = new CodeFence();
+    extension.bindEditor({
+      props: { readOnly: true, theme: { isDark: false } },
+    } as Editor);
+    for (const language of ["html-preview", "javascript"]) {
+      const plugins = extension.plugins;
+      const doc = schema.node("doc", null, [
+        schema.node(
+          "code_fence",
+          { language },
+          schema.text("line\n".repeat(100))
+        ),
+      ]);
+      const state = EditorState.create({ schema, doc, plugins });
+      const collapse = plugins
+        .map((plugin) => plugin.getState(state))
+        .find((value) => value?.tallBlocks instanceof Set);
+      expect(collapse.tallBlocks.has(0)).toBe(language !== "html-preview");
+    }
+  });
   it("parses a complete page and places a restrictive policy before source content", () => {
     const result = createHtmlPreviewSource(
       "<html><head><title>한글</title></head><body><svg></svg><script>window.x=1</script></body></html>",

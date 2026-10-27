@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { chromium } from "playwright";
@@ -256,6 +256,41 @@ try {
   assert.deepEqual(errors, []);
   await reset({ width: 80, height: 480 });
   await mkdir(path.join(root, "build"), { recursive: true });
+  for (const css of [
+    "html,body{height:100%;margin:0}",
+    "body{min-height:100vh}",
+  ]) {
+    await reset({
+      source: `<!doctype html><style>${css}</style><p>Viewport layout</p>`,
+    });
+    await page.waitForFunction(
+      () => document.querySelector("iframe")?.contentWindow !== null
+    );
+    await page.waitForTimeout(200);
+    const before = await frame.evaluate((element) => element.clientHeight);
+    assert.ok(
+      before >= 600,
+      "Viewport-based pages need a usable initial viewport"
+    );
+    await page.waitForTimeout(700);
+    assert.equal(
+      await frame.evaluate((element) => element.clientHeight),
+      before,
+      `Unstable viewport height: ${css}`
+    );
+  }
+  if (process.argv[2]) {
+    await reset({ source: await readFile(process.argv[2], "utf8") });
+    await page.waitForTimeout(500);
+    const before = await frame.evaluate((element) => element.clientHeight);
+    await page.waitForTimeout(1200);
+    assert.equal(
+      await frame.evaluate((element) => element.clientHeight),
+      before,
+      "Uploaded HTML height did not stabilize"
+    );
+    console.log(`PASS: uploaded HTML stable at ${before}px`);
+  }
   await page.screenshot({
     path: path.join(root, "build/html-preview-browser.png"),
   });

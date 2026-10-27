@@ -267,7 +267,7 @@ export function HtmlPreview(editor: Editor) {
                 const frame = document.createElement("div");
                 frame.className = "outline-html-preview-frame";
                 frame.style.width = `${previewWidth}%`;
-                frame.style.height = `${previewHeight || 200}px`;
+                frame.style.height = `${previewHeight || 600}px`;
                 iframe.style.cssText =
                   "display:block;width:100%;height:100%;border:0;";
                 const diagnostics = new Set<string>();
